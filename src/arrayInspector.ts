@@ -621,6 +621,12 @@ export class ArrayInspectorProvider implements vscode.TreeDataProvider<ArrayInfo
     private isSupportedType(type: string): boolean {
         this.outputChannel.appendLine(`Checking if type "${type}" is supported`);
 
+        // Reject empty or whitespace-only types
+        if (!type || type.trim().length === 0) {
+            this.outputChannel.appendLine(`Empty type rejected`);
+            return false;
+        }
+
         // Check exact match first
         if (this.supportedTypes.has(type)) {
             this.outputChannel.appendLine(`Exact match found for "${type}"`);
@@ -630,8 +636,10 @@ export class ArrayInspectorProvider implements vscode.TreeDataProvider<ArrayInfo
         // Check for partial matches in both directions:
         // - Short type in config matches long type from debugger (e.g., "ArrayImpl" in "jaxlib.xla_extension.ArrayImpl")
         // - Long type in config matches short type from debugger (e.g., "numpy.ndarray" matches "ndarray")
+        // Both strings must be non-empty for partial matching
         for (const supportedType of this.supportedTypes) {
-            if (type.includes(supportedType) || supportedType.includes(type)) {
+            if (supportedType.length > 0 && type.length > 0 &&
+                (type.includes(supportedType) || supportedType.includes(type))) {
                 this.outputChannel.appendLine(`Partial match: "${type}" matched with configured type "${supportedType}"`);
                 return true;
             }
