@@ -406,12 +406,6 @@ export class ArrayInspectorProvider implements vscode.TreeDataProvider<ArrayInfo
             return;
         }
 
-        // Don't update if this is a pinned array
-        if (this.pinnedArrays.has(expression)) {
-            this.outputChannel.appendLine(`"${expression}" is already pinned, skipping`);
-            return;
-        }
-
         // Check if array is already in locals or globals scope
         const inLocals = this.localsArrays.has(expression);
         const inGlobals = this.globalsArrays.has(expression);
