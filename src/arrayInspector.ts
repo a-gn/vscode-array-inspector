@@ -17,7 +17,8 @@ export class ArrayInspectorProvider implements vscode.TreeDataProvider<ArrayInfo
 
     private currentHoveredArray: ArrayInfo | null = null;
     private pinnedArrays: Map<string, PinnedArray> = new Map();
-    private scopeArrays: Map<string, ArrayInfo> = new Map();
+    private localsArrays: Map<string, ArrayInfo> = new Map();
+    private globalsArrays: Map<string, ArrayInfo> = new Map();
     private supportedTypes: Set<string>;
     private attributes: string[];
     private lastFrameId: number | undefined;
@@ -45,14 +46,16 @@ export class ArrayInspectorProvider implements vscode.TreeDataProvider<ArrayInfo
         vscode.debug.onDidChangeActiveDebugSession((session) => {
             this.outputChannel.appendLine(`Debug session changed: ${session?.name || 'none'}`);
             this.lastFrameId = undefined;
-            this.scopeArrays.clear();
+            this.localsArrays.clear();
+            this.globalsArrays.clear();
             this.updateAllArrays();
         });
 
         vscode.debug.onDidTerminateDebugSession(() => {
             this.outputChannel.appendLine('Debug session terminated');
             this.currentHoveredArray = null;
-            this.scopeArrays.clear();
+            this.localsArrays.clear();
+            this.globalsArrays.clear();
             this.lastFrameId = undefined;
             this.refresh();
         });
@@ -161,7 +164,7 @@ export class ArrayInspectorProvider implements vscode.TreeDataProvider<ArrayInfo
         // Root level: show items
         const items: ArrayInfoItem[] = [];
 
-        // Item 1: Highlighted (always show, even when empty)
+        // Section 1: Highlighted (always show, even when empty)
         items.push(ArrayInfoItem.createSection('highlighted', 'Highlighted Array'));
 
         // Section 2: Pinned
@@ -169,10 +172,13 @@ export class ArrayInspectorProvider implements vscode.TreeDataProvider<ArrayInfo
             items.push(ArrayInfoItem.createSection('pinned', 'Pinned'));
         }
 
-        // Section 3: In Scope - scan for all arrays in current frame
+        // Section 3 & 4: Locals and Globals - scan for all arrays in current frame
         await this.scanScopeForArrays();
-        if (this.scopeArrays.size > 0) {
-            items.push(ArrayInfoItem.createSection('scope', 'In Scope'));
+        if (this.localsArrays.size > 0) {
+            items.push(ArrayInfoItem.createSection('locals', 'Locals'));
+        }
+        if (this.globalsArrays.size > 0) {
+            items.push(ArrayInfoItem.createSection('globals', 'Globals'));
         }
 
         return items;
@@ -205,9 +211,15 @@ export class ArrayInspectorProvider implements vscode.TreeDataProvider<ArrayInfo
                     items.push(new ArrayInfoItem(info, collapsibleState, this.displayMode));
                 }
             }
-        } else if (sectionType === 'scope') {
-            // Show all arrays in scope, including pinned (don't filter)
-            for (const [, info] of this.scopeArrays) {
+        } else if (sectionType === 'locals') {
+            for (const [, info] of this.localsArrays) {
+                if (info.isAvailable) {
+                    const collapsibleState = this.getCollapsibleStateForMode();
+                    items.push(new ArrayInfoItem(info, collapsibleState, this.displayMode));
+                }
+            }
+        } else if (sectionType === 'globals') {
+            for (const [, info] of this.globalsArrays) {
                 if (info.isAvailable) {
                     const collapsibleState = this.getCollapsibleStateForMode();
                     items.push(new ArrayInfoItem(info, collapsibleState, this.displayMode));
@@ -400,7 +412,8 @@ export class ArrayInspectorProvider implements vscode.TreeDataProvider<ArrayInfo
     private async scanScopeForArrays(): Promise<void> {
         const session = vscode.debug.activeDebugSession;
         if (!session) {
-            this.scopeArrays.clear();
+            this.localsArrays.clear();
+            this.globalsArrays.clear();
             return;
         }
 
@@ -410,7 +423,8 @@ export class ArrayInspectorProvider implements vscode.TreeDataProvider<ArrayInfo
         // Check if frame changed - if so, clear scope arrays
         if (this.lastFrameId !== frameId) {
             this.outputChannel.appendLine(`Frame changed from ${this.lastFrameId} to ${frameId}, clearing scope`);
-            this.scopeArrays.clear();
+            this.localsArrays.clear();
+            this.globalsArrays.clear();
             this.lastFrameId = frameId;
         }
 
@@ -439,6 +453,9 @@ export class ArrayInspectorProvider implements vscode.TreeDataProvider<ArrayInfo
 
             this.outputChannel.appendLine(`Scope "${scope.name}" has ${variables.length} variables`);
 
+            // Determine which map to use based on scope name
+            const targetMap = scope.name === 'Locals' ? this.localsArrays : this.globalsArrays;
+
             // Check each variable to see if it's a supported array type
             for (const variable of variables) {
                 const varType = variable.type || '';
@@ -447,19 +464,34 @@ export class ArrayInspectorProvider implements vscode.TreeDataProvider<ArrayInfo
                 // Log each variable we're examining
                 this.outputChannel.appendLine(`  Variable in "${scope.name}": name="${varName}", type="${varType}"`);
 
-                if (this.isSupportedType(varType) && !this.scopeArrays.has(variable.name)) {
-                    this.outputChannel.appendLine(`  → Matched! Evaluating array: ${variable.name}`);
+                if (this.isSupportedType(varType) && !targetMap.has(variable.name)) {
+                    this.outputChannel.appendLine(`  → Matched! Getting attributes for: ${variable.name}`);
 
-                    // Evaluate the array to get full info
-                    const info = await this.evaluateArray(variable.name, variable.name, false);
-                    if (info.isAvailable) {
-                        this.scopeArrays.set(variable.name, info);
-                    }
+                    // Get attributes directly without evaluating the whole variable
+                    const [shape, dtype, device] = await Promise.all([
+                        this.evaluateAttribute(variable.name, 'shape', frameId),
+                        this.evaluateAttribute(variable.name, 'dtype', frameId),
+                        this.evaluateAttribute(variable.name, 'device', frameId)
+                    ]);
+
+                    const formattedDtype = dtype ? this.formatDtype(dtype) : null;
+
+                    const info: ArrayInfo = {
+                        name: variable.name,
+                        type: varType,
+                        shape,
+                        dtype: formattedDtype,
+                        device,
+                        isPinned: false,
+                        isAvailable: true
+                    };
+
+                    targetMap.set(variable.name, info);
                 }
             }
         }
 
-        this.outputChannel.appendLine(`Total arrays in scope: ${this.scopeArrays.size}`);
+        this.outputChannel.appendLine(`Total arrays - Locals: ${this.localsArrays.size}, Globals: ${this.globalsArrays.size}`);
     }
 
     private async getCurrentFrameId(): Promise<number> {
