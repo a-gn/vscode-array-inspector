@@ -91,8 +91,16 @@ export class ArrayInspectorProvider implements vscode.TreeDataProvider<ArrayInfo
         let selectedIsHighlighted = false;
         if (this.treeView && this.treeView.selection.length > 0) {
             const selectedItem = this.treeView.selection[0];
-            // If it's an attribute item, get the parent array name
-            if (!selectedItem.isSection && selectedItem.arrayInfo.isAvailable) {
+
+            if (selectedItem.isSection) {
+                // Section selected - ignore
+            } else if (selectedItem.contextValue === 'attribute' && selectedItem.parentArrayInfo) {
+                // Attribute item selected - get parent array info
+                selectedArrayName = selectedItem.parentArrayInfo.name;
+                // Check if parent is the highlighted array
+                selectedIsHighlighted = this.currentHoveredArray?.name === selectedItem.parentArrayInfo.name;
+            } else if (selectedItem.arrayInfo.isAvailable) {
+                // Array item selected directly
                 selectedArrayName = selectedItem.arrayInfo.name;
                 selectedIsHighlighted = selectedItem.isHighlighted;
             }
@@ -372,7 +380,7 @@ export class ArrayInspectorProvider implements vscode.TreeDataProvider<ArrayInfo
             }
 
             if (parts.length > 0) {
-                return [this.createAttributeItem('', parts.join(' '))];
+                return [this.createAttributeItem('', parts.join(' '), info)];
             }
             return [];
         }
@@ -399,14 +407,14 @@ export class ArrayInspectorProvider implements vscode.TreeDataProvider<ArrayInfo
         }
 
         if (this.attributes.includes('shape') && info.shape !== null) {
-            items.push(this.createAttributeItem('shape', info.shape));
+            items.push(this.createAttributeItem('shape', info.shape, info));
         }
         if (this.attributes.includes('dtype') && info.dtype !== null) {
             // Dtype is already formatted in evaluateArray
-            items.push(this.createAttributeItem('dtype', info.dtype));
+            items.push(this.createAttributeItem('dtype', info.dtype, info));
         }
         if (this.attributes.includes('device') && info.device !== null) {
-            items.push(this.createAttributeItem('device', info.device));
+            items.push(this.createAttributeItem('device', info.device, info));
         }
 
         return items;
@@ -437,7 +445,7 @@ export class ArrayInspectorProvider implements vscode.TreeDataProvider<ArrayInfo
         return dtype;
     }
 
-    private createAttributeItem(name: string, value: string): ArrayInfoItem {
+    private createAttributeItem(name: string, value: string, parentInfo?: ArrayInfo): ArrayInfoItem {
         const dummyInfo: ArrayInfo = {
             name: name ? `${name}: ${value}` : value,
             type: '',
@@ -447,7 +455,7 @@ export class ArrayInspectorProvider implements vscode.TreeDataProvider<ArrayInfo
             isPinned: false,
             isAvailable: true
         };
-        return new ArrayInfoItem(dummyInfo, vscode.TreeItemCollapsibleState.None, this.displayMode, true, false, undefined, false);
+        return new ArrayInfoItem(dummyInfo, vscode.TreeItemCollapsibleState.None, this.displayMode, true, false, undefined, false, true, parentInfo);
     }
 
     async handleHover(expression: string): Promise<void> {
@@ -876,6 +884,7 @@ export class ArrayInfoItem extends vscode.TreeItem {
     public readonly isSection: boolean;
     public readonly sectionType?: string;
     public readonly isHighlighted: boolean;
+    public readonly parentArrayInfo?: ArrayInfo;
 
     constructor(
         public readonly arrayInfo: ArrayInfo,
@@ -885,13 +894,15 @@ export class ArrayInfoItem extends vscode.TreeItem {
         isSection: boolean = false,
         sectionType?: string,
         isHighlighted: boolean = false,
-        showInline: boolean = true
+        showInline: boolean = true,
+        parentArrayInfo?: ArrayInfo
     ) {
         super(arrayInfo.name, collapsibleState);
 
         this.isSection = isSection;
         this.sectionType = sectionType;
         this.isHighlighted = isHighlighted;
+        this.parentArrayInfo = parentArrayInfo;
 
         if (isSection) {
             // Section header
