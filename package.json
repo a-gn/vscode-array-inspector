@@ -1,6 +1,6 @@
 {
-  "name": "vscode-detailed-debug-hovers",
-  "displayName": "Detailed Debug Hovers",
+  "name": "vscode-array-inspector",
+  "displayName": "VSCode Array Inspector",
   "description": "Show detailed array information (shape, dtype, device) in a sidebar panel during Python debugging",
   "version": "0.1.0",
   "engines": {
@@ -173,6 +173,7 @@
     "@typescript-eslint/eslint-plugin": "^6.13.0",
     "@typescript-eslint/parser": "^6.13.0",
     "@vscode/test-electron": "^2.5.2",
+    "@vscode/vsce": "^3.7.0",
     "eslint": "^8.54.0",
     "glob": "^11.0.3",
     "mocha": "^10.8.2",
