@@ -123,25 +123,25 @@
           "type": "string",
           "default": "np.",
           "pattern": "^(|[a-zA-Z_][a-zA-Z0-9_]*(?:\\.[a-zA-Z_][a-zA-Z0-9_]*)*\\.)$",
-          "description": "Prefix for NumPy dtypes (e.g., 'np.' for 'np.int32'). Must be empty or end with '.' and be a valid Python module path."
+          "description": "Prefix for NumPy dtypes when copying creation options (e.g., 'np.' for 'np.int32'). Must be empty or end with '.' and be a valid Python module path."
         },
         "arrayInspector.jaxNumpyPrefix": {
           "type": "string",
           "default": "jnp.",
           "pattern": "^(|[a-zA-Z_][a-zA-Z0-9_]*(?:\\.[a-zA-Z_][a-zA-Z0-9_]*)*\\.)$",
-          "description": "Prefix for JAX NumPy (jax.numpy) dtypes (e.g., 'jnp.' for 'jnp.int32'). Must be empty or end with '.' and be a valid Python module path."
+          "description": "Prefix for JAX NumPy (jax.numpy) dtypes when copying creation options (e.g., 'jnp.' for 'jnp.int32'). Must be empty or end with '.' and be a valid Python module path."
         },
         "arrayInspector.jaxPrefix": {
           "type": "string",
           "default": "jax.",
           "pattern": "^(|[a-zA-Z_][a-zA-Z0-9_]*(?:\\.[a-zA-Z_][a-zA-Z0-9_]*)*\\.)$",
-          "description": "Prefix for JAX devices (e.g., 'jax.' for 'jax.devices()'). Must be empty or end with '.' and be a valid Python module path."
+          "description": "Prefix for JAX devices when copying creation options (e.g., 'jax.' for 'jax.devices()'). Must be empty or end with '.' and be a valid Python module path."
         },
         "arrayInspector.pytorchPrefix": {
           "type": "string",
           "default": "torch.",
           "pattern": "^(|[a-zA-Z_][a-zA-Z0-9_]*(?:\\.[a-zA-Z_][a-zA-Z0-9_]*)*\\.)$",
-          "description": "Prefix for PyTorch dtypes and devices (e.g., 'torch.' for 'torch.int32' and 'torch.device()'). Must be empty or end with '.' and be a valid Python module path."
+          "description": "Prefix for PyTorch dtypes and devices when copying creation options (e.g., 'torch.' for 'torch.int32' and 'torch.device()'). Must be empty or end with '.' and be a valid Python module path."
         }
       }
     }
