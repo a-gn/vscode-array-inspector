@@ -86,6 +86,24 @@ export class ArrayInspectorProvider implements vscode.TreeDataProvider<ArrayInfo
     async toggleDisplayMode(): Promise<void> {
         const previousMode = this.displayMode;
 
+        // Capture the currently selected item (if any)
+        let selectedArrayName: string | undefined;
+        let selectedIsHighlighted = false;
+        if (this.treeView && this.treeView.selection.length > 0) {
+            const selectedItem = this.treeView.selection[0];
+            // If it's an attribute item, get the parent array name
+            if (!selectedItem.isSection && selectedItem.arrayInfo.isAvailable) {
+                selectedArrayName = selectedItem.arrayInfo.name;
+                selectedIsHighlighted = selectedItem.isHighlighted;
+            }
+        }
+
+        // If no selection, fall back to highlighted array
+        if (!selectedArrayName && this.currentHoveredArray) {
+            selectedArrayName = this.currentHoveredArray.name;
+            selectedIsHighlighted = true;
+        }
+
         // Cycle through modes: OneLine -> TwoLine -> Expanded -> OneLine
         switch (this.displayMode) {
             case DisplayMode.OneLine:
@@ -122,6 +140,40 @@ export class ArrayInspectorProvider implements vscode.TreeDataProvider<ArrayInfo
                     }
                 }
             }
+        }
+
+        // Restore selection to the array header (not its attributes)
+        if (this.treeView && selectedArrayName) {
+            await this.restoreSelection(selectedArrayName, selectedIsHighlighted);
+        }
+    }
+
+    private async restoreSelection(arrayName: string, isHighlighted: boolean): Promise<void> {
+        if (!this.treeView) {
+            return;
+        }
+
+        try {
+            // Find the item to select
+            const rootItems = await this.getChildren();
+            for (const section of rootItems) {
+                if (!section.isSection) {
+                    continue;
+                }
+
+                const children = await this.getSectionChildren(section.sectionType!);
+                for (const child of children) {
+                    // Match by array name and highlighted status
+                    if (child.arrayInfo.name === arrayName && child.isHighlighted === isHighlighted) {
+                        // Reveal and select the item
+                        await this.treeView.reveal(child, { select: true, focus: false });
+                        this.outputChannel.appendLine(`Restored selection to: ${arrayName}`);
+                        return;
+                    }
+                }
+            }
+        } catch (error) {
+            this.outputChannel.appendLine(`Failed to restore selection: ${error}`);
         }
     }
 
