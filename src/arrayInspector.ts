@@ -469,12 +469,37 @@ export class ArrayInspectorProvider implements vscode.TreeDataProvider<ArrayInfo
 
         // Try to get the active stack item (the frame the user has selected)
         const activeStackItem = vscode.debug.activeStackItem;
-        if (activeStackItem && 'frameId' in activeStackItem) {
-            this.outputChannel.appendLine(`Using active stack frame ID: ${(activeStackItem as any).frameId}`);
-            return (activeStackItem as any).frameId;
+        this.outputChannel.appendLine(`Active stack item type: ${activeStackItem?.constructor?.name}, has id: ${'id' in (activeStackItem || {})}`);
+
+        if (activeStackItem) {
+            // Check if it's a DebugStackFrame (has 'id' property)
+            if ('id' in activeStackItem && typeof (activeStackItem as any).id === 'number') {
+                const frameId = (activeStackItem as any).id;
+                this.outputChannel.appendLine(`Using active stack frame ID: ${frameId}`);
+                return frameId;
+            }
+            // If it's a DebugThread, we need to get its top frame
+            if ('threadId' in activeStackItem) {
+                const threadId = (activeStackItem as any).threadId;
+                this.outputChannel.appendLine(`Active item is a thread (ID: ${threadId}), getting its top frame`);
+                try {
+                    const stackTrace = await session.customRequest('stackTrace', {
+                        threadId: threadId,
+                        startFrame: 0,
+                        levels: 1
+                    });
+                    const frames = stackTrace.body?.stackFrames || stackTrace.stackFrames;
+                    if (frames && frames.length > 0) {
+                        this.outputChannel.appendLine(`Using thread's top frame ID: ${frames[0].id}`);
+                        return frames[0].id;
+                    }
+                } catch (error) {
+                    this.outputChannel.appendLine(`Error getting thread's top frame: ${error}`);
+                }
+            }
         }
 
-        // Fallback: get the top frame
+        // Fallback: get the top frame from the first thread
         try {
             const threads = await session.customRequest('threads', {});
             const threadList = threads.body?.threads || threads.threads;
@@ -488,7 +513,7 @@ export class ArrayInspectorProvider implements vscode.TreeDataProvider<ArrayInfo
 
                 const frames = stackTrace.body?.stackFrames || stackTrace.stackFrames;
                 if (frames && frames.length > 0) {
-                    this.outputChannel.appendLine(`Using top frame ID: ${frames[0].id}`);
+                    this.outputChannel.appendLine(`Using fallback top frame ID: ${frames[0].id}`);
                     return frames[0].id;
                 }
             }
