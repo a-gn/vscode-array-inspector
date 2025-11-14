@@ -651,6 +651,12 @@ export class ArrayInspectorProvider implements vscode.TreeDataProvider<ArrayInfo
             return;
         }
 
+        // Check if there's an active stack item (might not be ready yet when debugger first starts)
+        if (!vscode.debug.activeStackItem) {
+            this.outputChannel.appendLine('No active stack item yet, skipping scope scan');
+            return;
+        }
+
         // Get current frame
         const frameId = await this.getCurrentFrameId();
 
