@@ -22,6 +22,7 @@ export class ArrayInspectorProvider implements vscode.TreeDataProvider<ArrayInfo
     private attributes: string[];
     private lastFrameId: number | undefined;
     private displayMode: DisplayMode = DisplayMode.OneLine;
+    private showInlineOnHighlighted: boolean = true;
 
     constructor(private outputChannel: vscode.OutputChannel) {
         const config = vscode.workspace.getConfiguration('arrayInspector');
@@ -93,6 +94,16 @@ export class ArrayInspectorProvider implements vscode.TreeDataProvider<ArrayInfo
         return this.displayMode;
     }
 
+    toggleInlineOnHighlighted(): void {
+        this.showInlineOnHighlighted = !this.showInlineOnHighlighted;
+        this.outputChannel.appendLine(`Inline on highlighted: ${this.showInlineOnHighlighted}`);
+        this.refresh();
+    }
+
+    getShowInlineOnHighlighted(): boolean {
+        return this.showInlineOnHighlighted;
+    }
+
     getTreeItem(element: ArrayInfoItem): vscode.TreeItem {
         return element;
     }
@@ -120,7 +131,7 @@ export class ArrayInspectorProvider implements vscode.TreeDataProvider<ArrayInfo
 
         // Item 1: Highlighted (currently selected array)
         if (this.currentHoveredArray) {
-            items.push(ArrayInfoItem.createHighlighted(this.currentHoveredArray, this.displayMode));
+            items.push(ArrayInfoItem.createHighlighted(this.currentHoveredArray, this.displayMode, this.showInlineOnHighlighted));
         }
 
         // Section 2: Pinned
@@ -201,7 +212,8 @@ export class ArrayInspectorProvider implements vscode.TreeDataProvider<ArrayInfo
                 parts.push(info.shape);
             }
             if (this.attributes.includes('dtype') && info.dtype !== null) {
-                parts.push(this.formatDtype(info.dtype));
+                // Dtype is already formatted in evaluateArray
+                parts.push(info.dtype);
             }
             if (this.attributes.includes('device') && info.device !== null) {
                 parts.push(info.device);
@@ -238,9 +250,8 @@ export class ArrayInspectorProvider implements vscode.TreeDataProvider<ArrayInfo
             items.push(this.createAttributeItem('shape', info.shape));
         }
         if (this.attributes.includes('dtype') && info.dtype !== null) {
-            // Format dtype nicely - remove wrapper like dtype('int32')
-            const formattedDtype = this.formatDtype(info.dtype);
-            items.push(this.createAttributeItem('dtype', formattedDtype));
+            // Dtype is already formatted in evaluateArray
+            items.push(this.createAttributeItem('dtype', info.dtype));
         }
         if (this.attributes.includes('device') && info.device !== null) {
             items.push(this.createAttributeItem('device', info.device));
@@ -513,11 +524,14 @@ export class ArrayInspectorProvider implements vscode.TreeDataProvider<ArrayInfo
 
             this.outputChannel.appendLine(`Attributes - shape: ${shape}, dtype: ${dtype}, device: ${device}`);
 
+            // Format dtype for display
+            const formattedDtype = dtype ? this.formatDtype(dtype) : null;
+
             return {
                 name,
                 type,
                 shape,
-                dtype,
+                dtype: formattedDtype,
                 device,
                 isPinned,
                 isAvailable: true
@@ -606,7 +620,8 @@ export class ArrayInfoItem extends vscode.TreeItem {
         isAttribute: boolean = false,
         isSection: boolean = false,
         sectionType?: string,
-        isHighlighted: boolean = false
+        isHighlighted: boolean = false,
+        showInline: boolean = true
     ) {
         super(arrayInfo.name, collapsibleState);
 
@@ -625,7 +640,7 @@ export class ArrayInfoItem extends vscode.TreeItem {
             // Highlighted item
             this.contextValue = 'highlighted';
             this.iconPath = new vscode.ThemeIcon('symbol-array');
-            this.formatHighlightedItem(arrayInfo, displayMode);
+            this.formatHighlightedItem(arrayInfo, displayMode, showInline);
         } else {
             this.contextValue = arrayInfo.isPinned ? 'pinned' : 'unpinned';
             this.iconPath = new vscode.ThemeIcon('symbol-array');
@@ -639,20 +654,25 @@ export class ArrayInfoItem extends vscode.TreeItem {
         }
     }
 
-    private formatHighlightedItem(arrayInfo: ArrayInfo, displayMode: DisplayMode): void {
-        // Format based on display mode
-        switch (displayMode) {
-            case DisplayMode.OneLine:
-                this.formatOneLineCompact(arrayInfo);
-                break;
-            case DisplayMode.TwoLine:
-                this.label = arrayInfo.name;
-                this.description = '';
-                break;
-            case DisplayMode.Expanded:
-                this.label = arrayInfo.name;
-                this.description = '';
-                break;
+    private formatHighlightedItem(arrayInfo: ArrayInfo, displayMode: DisplayMode, showInline: boolean): void {
+        // If showInline is true, always show compact info on the line
+        if (showInline) {
+            this.formatOneLineCompact(arrayInfo);
+        } else {
+            // Otherwise format based on display mode
+            switch (displayMode) {
+                case DisplayMode.OneLine:
+                    this.formatOneLineCompact(arrayInfo);
+                    break;
+                case DisplayMode.TwoLine:
+                    this.label = arrayInfo.name;
+                    this.description = '';
+                    break;
+                case DisplayMode.Expanded:
+                    this.label = arrayInfo.name;
+                    this.description = '';
+                    break;
+            }
         }
         this.tooltip = this.buildTooltip(arrayInfo);
     }
@@ -711,10 +731,10 @@ export class ArrayInfoItem extends vscode.TreeItem {
         );
     }
 
-    static createHighlighted(arrayInfo: ArrayInfo, displayMode: DisplayMode): ArrayInfoItem {
-        // Determine collapsible state based on display mode
+    static createHighlighted(arrayInfo: ArrayInfo, displayMode: DisplayMode, showInline: boolean): ArrayInfoItem {
+        // Determine collapsible state based on display mode and showInline
         let collapsibleState = vscode.TreeItemCollapsibleState.None;
-        if (displayMode === DisplayMode.TwoLine || displayMode === DisplayMode.Expanded) {
+        if (!showInline && (displayMode === DisplayMode.TwoLine || displayMode === DisplayMode.Expanded)) {
             collapsibleState = vscode.TreeItemCollapsibleState.Collapsed;
         }
 
@@ -725,7 +745,8 @@ export class ArrayInfoItem extends vscode.TreeItem {
             false,
             false,
             undefined,
-            true
+            true,
+            showInline
         );
     }
 

@@ -70,6 +70,8 @@ Arrays out of scope → Removed from panel automatically
 - `clearHighlighted()`: Clears the highlighted array when cursor moves away
 - `toggleDisplayMode()`: Cycles through display modes (OneLine → TwoLine → Expanded)
 - `getDisplayMode()`: Returns current display mode
+- `toggleInlineOnHighlighted()`: Toggles inline display on highlighted array
+- `getShowInlineOnHighlighted()`: Returns inline display state
 - `getChildren(element)`: Returns tree structure - highlighted item + sections at root
 - `getSectionChildren(sectionType)`: Returns arrays for each section (pinned/scope)
 - `getCollapsibleStateForMode()`: Determines if items should be collapsible based on display mode
@@ -87,6 +89,7 @@ Arrays out of scope → Removed from panel automatically
 - `scopeArrays`: Map of all arrays in current scope (shown in "In Scope" section, no filtering)
 - `lastFrameId`: Track frame changes to detect when scope needs refreshing
 - `displayMode`: Current display mode (OneLine, TwoLine, or Expanded)
+- `showInlineOnHighlighted`: Whether to show compact inline info on highlighted array (default: true)
 
 **Critical Dependencies**:
 - `vscode.debug.activeDebugSession`: Must be non-null
@@ -283,9 +286,21 @@ The extension supports three display modes that affect how array information is 
 **Behavior**: Cycles through OneLine → TwoLine → Expanded → OneLine
 
 The display mode is global and applies to:
-- Highlighted arrays (currently selected)
 - Pinned arrays
 - Arrays in scope
+
+### Inline Display on Highlighted Array
+
+There is a separate toggle for the highlighted (currently selected) array that controls whether it shows compact inline information on its line.
+
+**Button**: Click the ellipsis icon (⋯) in the Array Inspector panel toolbar
+**Command**: Use `arrayInspector.toggleInlineOnHighlighted` from the command palette
+**Behavior**: Toggles between showing inline compact info and following the global display mode
+**Default**: Enabled (shows inline compact info)
+
+When enabled, the highlighted array always shows compact information (`name shape dtype device`) on a single line, regardless of the global display mode. This provides quick at-a-glance information for the currently selected variable.
+
+When disabled, the highlighted array follows the global display mode setting.
 
 ## Configuration
 

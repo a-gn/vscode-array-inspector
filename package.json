@@ -52,10 +52,20 @@
         "command": "arrayInspector.toggleDisplayMode",
         "title": "Toggle Display Mode",
         "icon": "$(layout)"
+      },
+      {
+        "command": "arrayInspector.toggleInlineOnHighlighted",
+        "title": "Toggle Inline on Highlighted",
+        "icon": "$(ellipsis)"
       }
     ],
     "menus": {
       "view/title": [
+        {
+          "command": "arrayInspector.toggleInlineOnHighlighted",
+          "when": "view == arrayInspectorView",
+          "group": "navigation"
+        },
         {
           "command": "arrayInspector.toggleDisplayMode",
           "when": "view == arrayInspectorView",
