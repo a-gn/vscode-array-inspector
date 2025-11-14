@@ -1,0 +1,114 @@
+/**
+ * Originally written by Claude (Sonnet 4.5) on 2025/11/14
+ */
+
+import * as vscode from 'vscode';
+import { ArrayInspectorProvider, ArrayInfoItem } from './arrayInspector';
+
+let arrayInspectorProvider: ArrayInspectorProvider;
+let hoverTimeout: NodeJS.Timeout | undefined;
+
+export function activate(context: vscode.ExtensionContext): void {
+    console.log('Array Inspector extension is now active');
+
+    // Create and register the tree view provider
+    arrayInspectorProvider = new ArrayInspectorProvider();
+    const treeView = vscode.window.createTreeView('arrayInspectorView', {
+        treeDataProvider: arrayInspectorProvider,
+        showCollapseAll: true
+    });
+
+    context.subscriptions.push(treeView);
+
+    // Register commands
+    context.subscriptions.push(
+        vscode.commands.registerCommand('arrayInspector.pinArray', async (item: ArrayInfoItem) => {
+            await arrayInspectorProvider.pinArray(item);
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('arrayInspector.unpinArray', async (item: ArrayInfoItem) => {
+            await arrayInspectorProvider.unpinArray(item);
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('arrayInspector.refresh', () => {
+            arrayInspectorProvider.refresh();
+        })
+    );
+
+    // Listen to mouse hover events
+    context.subscriptions.push(
+        vscode.window.onDidChangeTextEditorSelection(handleSelectionChange)
+    );
+
+    // Also listen to active editor changes
+    context.subscriptions.push(
+        vscode.window.onDidChangeActiveTextEditor(() => {
+            // Clear hover timeout when switching editors
+            if (hoverTimeout) {
+                clearTimeout(hoverTimeout);
+                hoverTimeout = undefined;
+            }
+        })
+    );
+}
+
+function handleSelectionChange(event: vscode.TextEditorSelectionChangeEvent): void {
+    // Only process during active debug sessions
+    if (!vscode.debug.activeDebugSession) {
+        return;
+    }
+
+    const editor = event.textEditor;
+    const selection = event.selections[0];
+
+    // Check if it's a Python file
+    if (editor.document.languageId !== 'python') {
+        return;
+    }
+
+    // Debounce hover detection to avoid too many evaluations
+    if (hoverTimeout) {
+        clearTimeout(hoverTimeout);
+    }
+
+    hoverTimeout = setTimeout(() => {
+        detectHoveredVariable(editor, selection.active);
+    }, 100);
+}
+
+function detectHoveredVariable(editor: vscode.TextEditor, position: vscode.Position): void {
+    // Get the word at the cursor position
+    const wordRange = editor.document.getWordRangeAtPosition(position, /[a-zA-Z_][a-zA-Z0-9_]*/);
+
+    if (!wordRange) {
+        return;
+    }
+
+    const word = editor.document.getText(wordRange);
+
+    // Ignore keywords and common built-ins
+    const keywords = new Set([
+        'def', 'class', 'import', 'from', 'if', 'else', 'elif', 'while', 'for',
+        'try', 'except', 'finally', 'with', 'as', 'return', 'yield', 'break',
+        'continue', 'pass', 'raise', 'assert', 'del', 'lambda', 'and', 'or',
+        'not', 'in', 'is', 'None', 'True', 'False', 'print', 'len', 'range',
+        'str', 'int', 'float', 'list', 'dict', 'set', 'tuple'
+    ]);
+
+    if (keywords.has(word)) {
+        return;
+    }
+
+    // Handle the hover
+    arrayInspectorProvider.handleHover(word);
+}
+
+export function deactivate(): void {
+    if (hoverTimeout) {
+        clearTimeout(hoverTimeout);
+    }
+}
