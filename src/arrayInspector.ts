@@ -469,37 +469,21 @@ export class ArrayInspectorProvider implements vscode.TreeDataProvider<ArrayInfo
 
         // Try to get the active stack item (the frame the user has selected)
         const activeStackItem = vscode.debug.activeStackItem;
-        this.outputChannel.appendLine(`Active stack item type: ${activeStackItem?.constructor?.name}, has id: ${'id' in (activeStackItem || {})}`);
+        this.outputChannel.appendLine(`Active stack item: ${activeStackItem?.constructor?.name}`);
 
         if (activeStackItem) {
-            // Check if it's a DebugStackFrame (has 'id' property)
-            if ('id' in activeStackItem && typeof (activeStackItem as any).id === 'number') {
-                const frameId = (activeStackItem as any).id;
-                this.outputChannel.appendLine(`Using active stack frame ID: ${frameId}`);
-                return frameId;
-            }
-            // If it's a DebugThread, we need to get its top frame
-            if ('threadId' in activeStackItem) {
-                const threadId = (activeStackItem as any).threadId;
-                this.outputChannel.appendLine(`Active item is a thread (ID: ${threadId}), getting its top frame`);
-                try {
-                    const stackTrace = await session.customRequest('stackTrace', {
-                        threadId: threadId,
-                        startFrame: 0,
-                        levels: 1
-                    });
-                    const frames = stackTrace.body?.stackFrames || stackTrace.stackFrames;
-                    if (frames && frames.length > 0) {
-                        this.outputChannel.appendLine(`Using thread's top frame ID: ${frames[0].id}`);
-                        return frames[0].id;
-                    }
-                } catch (error) {
-                    this.outputChannel.appendLine(`Error getting thread's top frame: ${error}`);
+            // VSCode's DebugStackFrame has a threadId and frameId property (not 'id')
+            if ('threadId' in activeStackItem && 'frameId' in activeStackItem) {
+                const frameId = (activeStackItem as any).frameId;
+                if (typeof frameId === 'number') {
+                    this.outputChannel.appendLine(`Using selected stack frame ID: ${frameId}`);
+                    return frameId;
                 }
             }
         }
 
         // Fallback: get the top frame from the first thread
+        this.outputChannel.appendLine('No specific frame selected, using top frame from first thread');
         try {
             const threads = await session.customRequest('threads', {});
             const threadList = threads.body?.threads || threads.threads;
