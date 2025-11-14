@@ -44,7 +44,7 @@ def main():
 
     # Bump version
     print("\n=== Bumping minor version ===")
-    subprocess.run(['npm', 'version', 'minor', '-m', 'Bump version to %s'], check=True)
+    subprocess.run(["npm", "version", "minor", "-m", "Release version %s"], check=True)
 
     # npm version creates a tag with format vX.Y.Z, but we need release/vX.Y.Z
     new_version = get_current_version()
