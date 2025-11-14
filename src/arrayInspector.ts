@@ -23,7 +23,6 @@ export class ArrayInspectorProvider implements vscode.TreeDataProvider<ArrayInfo
     private attributes: string[];
     private lastFrameId: number | undefined;
     private displayMode: DisplayMode = DisplayMode.OneLine;
-    private showInlineOnHighlighted: boolean = true;
     private treeView: vscode.TreeView<ArrayInfoItem> | undefined;
 
     constructor(private outputChannel: vscode.OutputChannel) {
@@ -189,15 +188,6 @@ export class ArrayInspectorProvider implements vscode.TreeDataProvider<ArrayInfo
         return this.displayMode;
     }
 
-    toggleInlineOnHighlighted(): void {
-        this.showInlineOnHighlighted = !this.showInlineOnHighlighted;
-        this.outputChannel.appendLine(`Inline on highlighted: ${this.showInlineOnHighlighted}`);
-        this.refresh();
-    }
-
-    getShowInlineOnHighlighted(): boolean {
-        return this.showInlineOnHighlighted;
-    }
 
     getTreeItem(element: ArrayInfoItem): vscode.TreeItem {
         return element;
@@ -279,7 +269,7 @@ export class ArrayInspectorProvider implements vscode.TreeDataProvider<ArrayInfo
 
         if (sectionType === 'highlighted') {
             if (this.currentHoveredArray) {
-                items.push(ArrayInfoItem.createHighlighted(this.currentHoveredArray, this.displayMode, this.showInlineOnHighlighted));
+                items.push(ArrayInfoItem.createHighlighted(this.currentHoveredArray, this.displayMode));
             } else {
                 // Show "No highlighted array" message
                 const noArrayInfo: ArrayInfo = {
@@ -455,7 +445,7 @@ export class ArrayInspectorProvider implements vscode.TreeDataProvider<ArrayInfo
             isPinned: false,
             isAvailable: true
         };
-        return new ArrayInfoItem(dummyInfo, vscode.TreeItemCollapsibleState.None, this.displayMode, true, false, undefined, false, true, parentInfo);
+        return new ArrayInfoItem(dummyInfo, vscode.TreeItemCollapsibleState.None, this.displayMode, true, false, undefined, false, parentInfo);
     }
 
     async handleHover(expression: string): Promise<void> {
@@ -519,7 +509,7 @@ export class ArrayInspectorProvider implements vscode.TreeDataProvider<ArrayInfo
         }
 
         const config = vscode.workspace.getConfiguration('arrayInspector');
-        const moduleName = config.get<string>('numpyModuleName', 'np');
+        const prefix = config.get<string>('numpyPrefix', 'np.');
 
         const parts: string[] = [];
         if (info.shape !== null) {
@@ -527,7 +517,7 @@ export class ArrayInspectorProvider implements vscode.TreeDataProvider<ArrayInfo
         }
         if (info.dtype !== null) {
             const dtype = this.convertDtypeToNumpy(info.dtype);
-            parts.push(`dtype=${moduleName}.${dtype}`);
+            parts.push(`dtype=${prefix}${dtype}`);
         }
 
         const creationOptions = parts.join(', ');
@@ -543,7 +533,8 @@ export class ArrayInspectorProvider implements vscode.TreeDataProvider<ArrayInfo
         }
 
         const config = vscode.workspace.getConfiguration('arrayInspector');
-        const moduleName = config.get<string>('jaxModuleName', 'jnp');
+        const jaxNumpyPrefix = config.get<string>('jaxNumpyPrefix', 'jnp.');
+        const jaxPrefix = config.get<string>('jaxPrefix', 'jax.');
 
         const parts: string[] = [];
         if (info.shape !== null) {
@@ -551,10 +542,10 @@ export class ArrayInspectorProvider implements vscode.TreeDataProvider<ArrayInfo
         }
         if (info.dtype !== null) {
             const dtype = this.convertDtypeToJax(info.dtype);
-            parts.push(`dtype=${moduleName}.${dtype}`);
+            parts.push(`dtype=${jaxNumpyPrefix}${dtype}`);
         }
         if (info.device !== null) {
-            const device = this.convertDeviceToJax(info.device);
+            const device = this.convertDeviceToJax(info.device, jaxPrefix);
             parts.push(`device=${device}`);
         }
 
@@ -571,7 +562,7 @@ export class ArrayInspectorProvider implements vscode.TreeDataProvider<ArrayInfo
         }
 
         const config = vscode.workspace.getConfiguration('arrayInspector');
-        const moduleName = config.get<string>('pytorchModuleName', 'torch');
+        const prefix = config.get<string>('pytorchPrefix', 'torch.');
 
         const parts: string[] = [];
         if (info.shape !== null) {
@@ -579,10 +570,10 @@ export class ArrayInspectorProvider implements vscode.TreeDataProvider<ArrayInfo
         }
         if (info.dtype !== null) {
             const dtype = this.convertDtypeToPytorch(info.dtype);
-            parts.push(`dtype=${moduleName}.${dtype}`);
+            parts.push(`dtype=${prefix}${dtype}`);
         }
         if (info.device !== null) {
-            const device = this.convertDeviceToPytorch(info.device, moduleName);
+            const device = this.convertDeviceToPytorch(info.device, prefix);
             parts.push(`device=${device}`);
         }
 
@@ -608,34 +599,42 @@ export class ArrayInspectorProvider implements vscode.TreeDataProvider<ArrayInfo
         return dtype;
     }
 
-    private convertDeviceToJax(device: string): string {
+    private convertDeviceToJax(device: string, prefix: string): string {
         // JAX device format: jax.devices('cpu')[0], jax.devices('gpu')[0], etc.
         // The device string might be like "cpu:0" or "gpu:0"
+        // Handle prefix: if it ends with '.', remove it; if empty, use it as-is
+        const moduleRef = prefix.endsWith('.') && prefix !== '' ? prefix.slice(0, -1) : prefix;
+        const separator = moduleRef === '' ? '' : '.';
+
         if (device.toLowerCase().includes('cpu')) {
-            return "jax.devices('cpu')[0]";
+            return `${moduleRef}${separator}devices('cpu')[0]`;
         } else if (device.toLowerCase().includes('gpu') || device.toLowerCase().includes('cuda')) {
-            return "jax.devices('gpu')[0]";
+            return `${moduleRef}${separator}devices('gpu')[0]`;
         }
         // Default to the device string as-is if we don't recognize it
-        return `jax.devices()[0]`;
+        return `${moduleRef}${separator}devices()[0]`;
     }
 
-    private convertDeviceToPytorch(device: string, moduleName: string): string {
+    private convertDeviceToPytorch(device: string, prefix: string): string {
         // PyTorch device format: torch.device('cpu'), torch.device('cuda:0'), etc.
         // The device string might be like "cpu" or "cuda:0"
+        // Handle prefix: if it ends with '.', remove it; if empty, use it as-is
+        const moduleRef = prefix.endsWith('.') && prefix !== '' ? prefix.slice(0, -1) : prefix;
+        const separator = moduleRef === '' ? '' : '.';
+
         if (device.toLowerCase().includes('cpu')) {
-            return `${moduleName}.device('cpu')`;
+            return `${moduleRef}${separator}device('cpu')`;
         } else if (device.toLowerCase().includes('cuda')) {
             // Extract device number if present
             const match = device.match(/cuda:?(\d+)?/i);
             if (match) {
                 const deviceNum = match[1] || '0';
-                return `${moduleName}.device('cuda:${deviceNum}')`;
+                return `${moduleRef}${separator}device('cuda:${deviceNum}')`;
             }
-            return `${moduleName}.device('cuda')`;
+            return `${moduleRef}${separator}device('cuda')`;
         }
         // Default: wrap the device string
-        return `${moduleName}.device('${device}')`;
+        return `${moduleRef}${separator}device('${device}')`;
     }
 
     private async updateAllArrays(): Promise<void> {
@@ -894,7 +893,6 @@ export class ArrayInfoItem extends vscode.TreeItem {
         isSection: boolean = false,
         sectionType?: string,
         isHighlighted: boolean = false,
-        showInline: boolean = true,
         parentArrayInfo?: ArrayInfo
     ) {
         super(arrayInfo.name, collapsibleState);
@@ -912,10 +910,10 @@ export class ArrayInfoItem extends vscode.TreeItem {
             this.contextValue = 'attribute';
             this.iconPath = new vscode.ThemeIcon('symbol-field');
         } else if (isHighlighted) {
-            // Highlighted item
+            // Highlighted item (formatted same as regular items)
             this.contextValue = 'highlighted';
             this.iconPath = new vscode.ThemeIcon('symbol-array');
-            this.formatHighlightedItem(arrayInfo, displayMode, showInline);
+            this.formatRegularItem(arrayInfo, displayMode);
         } else {
             this.contextValue = arrayInfo.isPinned ? 'pinned' : 'unpinned';
             this.iconPath = new vscode.ThemeIcon('symbol-array');
@@ -929,28 +927,6 @@ export class ArrayInfoItem extends vscode.TreeItem {
         }
     }
 
-    private formatHighlightedItem(arrayInfo: ArrayInfo, displayMode: DisplayMode, showInline: boolean): void {
-        // If showInline is true, always show compact info on the line
-        if (showInline) {
-            this.formatOneLineCompact(arrayInfo);
-        } else {
-            // Otherwise format based on display mode
-            switch (displayMode) {
-                case DisplayMode.OneLine:
-                    this.formatOneLineCompact(arrayInfo);
-                    break;
-                case DisplayMode.TwoLine:
-                    this.label = arrayInfo.name;
-                    this.description = '';
-                    break;
-                case DisplayMode.Expanded:
-                    this.label = arrayInfo.name;
-                    this.description = '';
-                    break;
-            }
-        }
-        this.tooltip = this.buildTooltip(arrayInfo);
-    }
 
     private formatRegularItem(arrayInfo: ArrayInfo, displayMode: DisplayMode): void {
         // Format based on display mode
@@ -1006,10 +982,10 @@ export class ArrayInfoItem extends vscode.TreeItem {
         );
     }
 
-    static createHighlighted(arrayInfo: ArrayInfo, displayMode: DisplayMode, showInline: boolean): ArrayInfoItem {
-        // Determine collapsible state based on display mode and showInline
+    static createHighlighted(arrayInfo: ArrayInfo, displayMode: DisplayMode): ArrayInfoItem {
+        // Determine collapsible state based on display mode (same as other arrays)
         let collapsibleState = vscode.TreeItemCollapsibleState.None;
-        if (!showInline && (displayMode === DisplayMode.TwoLine || displayMode === DisplayMode.Expanded)) {
+        if (displayMode === DisplayMode.TwoLine || displayMode === DisplayMode.Expanded) {
             collapsibleState = vscode.TreeItemCollapsibleState.Expanded;
         }
 
@@ -1020,8 +996,7 @@ export class ArrayInfoItem extends vscode.TreeItem {
             false,
             false,
             undefined,
-            true,
-            showInline
+            true
         );
     }
 

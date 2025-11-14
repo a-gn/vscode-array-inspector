@@ -1,5 +1,7 @@
 # Array Inspector VSCode Extension - Design Document
 
+This document is written and maintained by AI agents. It's meant to help them get up to speed quickly in new sessions.
+
 ## Project Overview
 
 **Purpose**: A VSCode extension that shows detailed array information (shape, dtype, device) in a sidebar panel during Python debugging sessions. Users can hover/click on array variables to see their properties, and pin arrays to keep them visible across stack frames.

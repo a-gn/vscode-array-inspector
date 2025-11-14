@@ -45,12 +45,6 @@ export function activate(context: vscode.ExtensionContext): void {
     );
 
     context.subscriptions.push(
-        vscode.commands.registerCommand('arrayInspector.toggleInlineOnHighlighted', () => {
-            arrayInspectorProvider.toggleInlineOnHighlighted();
-        })
-    );
-
-    context.subscriptions.push(
         vscode.commands.registerCommand('arrayInspector.copyNumpyCreationOptions', async (item: ArrayInfoItem) => {
             await arrayInspectorProvider.copyNumpyCreationOptions(item);
         })
