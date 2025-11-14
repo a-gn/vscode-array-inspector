@@ -234,11 +234,23 @@ export class ArrayInspectorProvider implements vscode.TreeDataProvider<ArrayInfo
                 items.push(new ArrayInfoItem(noArrayInfo, vscode.TreeItemCollapsibleState.None, this.displayMode, true, false, undefined, false));
             }
         } else if (sectionType === 'pinned') {
-            for (const [name, pinned] of this.pinnedArrays) {
-                const info = await this.evaluateArray(pinned.expression, name, true);
-                if (info.isAvailable) {
+            for (const [name] of this.pinnedArrays) {
+                // Check if pinned array is available in current scope (locals or globals)
+                const inLocals = this.localsArrays.has(name);
+                const inGlobals = this.globalsArrays.has(name);
+
+                if (inLocals || inGlobals) {
+                    // Get the info from the scope map (already evaluated)
+                    const info = (inLocals ? this.localsArrays.get(name) : this.globalsArrays.get(name))!;
+                    // Mark as pinned
+                    const pinnedInfo = { ...info, isPinned: true };
                     const collapsibleState = this.getCollapsibleStateForMode();
-                    items.push(new ArrayInfoItem(info, collapsibleState, this.displayMode));
+                    items.push(new ArrayInfoItem(pinnedInfo, collapsibleState, this.displayMode));
+                } else {
+                    // Pinned array not in current scope - show as unavailable
+                    const unavailableInfo = this.createUnavailableInfo(name, true);
+                    const collapsibleState = this.getCollapsibleStateForMode();
+                    items.push(new ArrayInfoItem(unavailableInfo, collapsibleState, this.displayMode));
                 }
             }
         } else if (sectionType === 'locals') {
@@ -400,10 +412,22 @@ export class ArrayInspectorProvider implements vscode.TreeDataProvider<ArrayInfo
             return;
         }
 
-        this.outputChannel.appendLine(`Evaluating array: "${expression}"`);
-        const info = await this.evaluateArray(expression, expression, false);
+        // Check if array is already in locals or globals scope
+        const inLocals = this.localsArrays.has(expression);
+        const inGlobals = this.globalsArrays.has(expression);
 
-        this.outputChannel.appendLine(`Evaluation result - isAvailable: ${info.isAvailable}, type: "${info.type}"`);
+        let info: ArrayInfo;
+        if (inLocals || inGlobals) {
+            // Use already evaluated info from scope
+            this.outputChannel.appendLine(`Array "${expression}" found in scope, using cached info`);
+            info = (inLocals ? this.localsArrays.get(expression) : this.globalsArrays.get(expression))!;
+        } else {
+            // Not in scope maps, need to evaluate
+            this.outputChannel.appendLine(`Evaluating array: "${expression}"`);
+            info = await this.evaluateArray(expression, expression, false);
+        }
+
+        this.outputChannel.appendLine(`Result - isAvailable: ${info.isAvailable}, type: "${info.type}"`);
 
         if (info.isAvailable && this.isSupportedType(info.type)) {
             this.outputChannel.appendLine(`Type "${info.type}" is supported, updating panel`);
