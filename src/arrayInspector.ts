@@ -467,6 +467,14 @@ export class ArrayInspectorProvider implements vscode.TreeDataProvider<ArrayInfo
             return undefined;
         }
 
+        // Try to get the active stack item (the frame the user has selected)
+        const activeStackItem = vscode.debug.activeStackItem;
+        if (activeStackItem && 'frameId' in activeStackItem) {
+            this.outputChannel.appendLine(`Using active stack frame ID: ${(activeStackItem as any).frameId}`);
+            return (activeStackItem as any).frameId;
+        }
+
+        // Fallback: get the top frame
         try {
             const threads = await session.customRequest('threads', {});
             const threadList = threads.body?.threads || threads.threads;
@@ -480,6 +488,7 @@ export class ArrayInspectorProvider implements vscode.TreeDataProvider<ArrayInfo
 
                 const frames = stackTrace.body?.stackFrames || stackTrace.stackFrames;
                 if (frames && frames.length > 0) {
+                    this.outputChannel.appendLine(`Using top frame ID: ${frames[0].id}`);
                     return frames[0].id;
                 }
             }
