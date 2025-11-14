@@ -23,6 +23,7 @@ export class ArrayInspectorProvider implements vscode.TreeDataProvider<ArrayInfo
     private lastFrameId: number | undefined;
     private displayMode: DisplayMode = DisplayMode.OneLine;
     private showInlineOnHighlighted: boolean = true;
+    private treeView: vscode.TreeView<ArrayInfoItem> | undefined;
 
     constructor(private outputChannel: vscode.OutputChannel) {
         const config = vscode.workspace.getConfiguration('arrayInspector');
@@ -63,6 +64,10 @@ export class ArrayInspectorProvider implements vscode.TreeDataProvider<ArrayInfo
         });
     }
 
+    setTreeView(treeView: vscode.TreeView<ArrayInfoItem>): void {
+        this.treeView = treeView;
+    }
+
     private updateConfiguration(): void {
         const config = vscode.workspace.getConfiguration('arrayInspector');
         this.supportedTypes = new Set(config.get<string[]>('supportedTypes', []));
@@ -75,7 +80,9 @@ export class ArrayInspectorProvider implements vscode.TreeDataProvider<ArrayInfo
         this._onDidChangeTreeData.fire();
     }
 
-    toggleDisplayMode(): void {
+    async toggleDisplayMode(): Promise<void> {
+        const previousMode = this.displayMode;
+
         // Cycle through modes: OneLine -> TwoLine -> Expanded -> OneLine
         switch (this.displayMode) {
             case DisplayMode.OneLine:
@@ -89,7 +96,30 @@ export class ArrayInspectorProvider implements vscode.TreeDataProvider<ArrayInfo
                 break;
         }
         this.outputChannel.appendLine(`Display mode changed to: ${this.displayMode}`);
-        this.refresh();
+
+        // Refresh the tree to update collapsible states
+        await this.refresh();
+
+        // If switching to TwoLine or Expanded mode, expand all visible items
+        if (this.treeView && previousMode === DisplayMode.OneLine &&
+            (this.displayMode === DisplayMode.TwoLine || this.displayMode === DisplayMode.Expanded)) {
+            // Get root items and expand them
+            const rootItems = await this.getChildren();
+            for (const section of rootItems) {
+                if (section.isSection) {
+                    // Expand the section to reveal its children
+                    await this.treeView.reveal(section, { expand: true });
+
+                    // Get and expand the section's children
+                    const children = await this.getSectionChildren(section.sectionType!);
+                    for (const child of children) {
+                        if (child.collapsibleState !== vscode.TreeItemCollapsibleState.None) {
+                            await this.treeView.reveal(child, { expand: true });
+                        }
+                    }
+                }
+            }
+        }
     }
 
     getDisplayMode(): DisplayMode {

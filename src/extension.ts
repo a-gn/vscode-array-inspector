@@ -21,6 +21,7 @@ export function activate(context: vscode.ExtensionContext): void {
         treeDataProvider: arrayInspectorProvider,
         showCollapseAll: true
     });
+    arrayInspectorProvider.setTreeView(treeView);
 
     context.subscriptions.push(treeView);
 
@@ -38,14 +39,8 @@ export function activate(context: vscode.ExtensionContext): void {
     );
 
     context.subscriptions.push(
-        vscode.commands.registerCommand('arrayInspector.refresh', async () => {
-            await arrayInspectorProvider.refresh();
-        })
-    );
-
-    context.subscriptions.push(
-        vscode.commands.registerCommand('arrayInspector.toggleDisplayMode', () => {
-            arrayInspectorProvider.toggleDisplayMode();
+        vscode.commands.registerCommand('arrayInspector.toggleDisplayMode', async () => {
+            await arrayInspectorProvider.toggleDisplayMode();
         })
     );
 

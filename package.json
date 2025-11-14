@@ -44,11 +44,6 @@
         "icon": "$(pinned)"
       },
       {
-        "command": "arrayInspector.refresh",
-        "title": "Refresh",
-        "icon": "$(refresh)"
-      },
-      {
         "command": "arrayInspector.toggleDisplayMode",
         "title": "Toggle Display Mode",
         "icon": "$(layout)"
@@ -68,11 +63,6 @@
         },
         {
           "command": "arrayInspector.toggleDisplayMode",
-          "when": "view == arrayInspectorView",
-          "group": "navigation"
-        },
-        {
-          "command": "arrayInspector.refresh",
           "when": "view == arrayInspectorView",
           "group": "navigation"
         }
