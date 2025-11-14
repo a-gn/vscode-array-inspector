@@ -1,6 +1,6 @@
 {
-  "name": "vscode-array-inspector",
-  "displayName": "VSCode Array Inspector",
+  "name": "array-inspector",
+  "displayName": "Array Inspector",
   "description": "Show detailed array information (shape, dtype, device) in a sidebar panel during Python debugging",
   "version": "0.1.0",
   "publisher": "ArnoGobbin",
