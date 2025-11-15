@@ -9,10 +9,13 @@ async function main() {
     try {
         const extensionDevelopmentPath = path.resolve(__dirname, '../../');
         const extensionTestsPath = path.resolve(__dirname, './suite/index');
+        const testWorkspace = path.resolve(__dirname, '../../');
 
         await runTests({
             extensionDevelopmentPath,
-            extensionTestsPath
+            extensionTestsPath,
+            // Open the extension root as workspace so tests can access test-examples/
+            launchArgs: [testWorkspace, '--disable-extensions']
         });
     } catch (err) {
         console.error('Failed to run tests:', err);

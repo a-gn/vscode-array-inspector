@@ -556,9 +556,9 @@ npm test
 
 ### Test Coverage
 
-**All tests pass** ✓ **61 passing** (22ms)
+**All tests pass** ✓ **226 passing** (169ms)
 
-**1. Core Logic Tests** (`src/test/unit.test.ts` - 61 tests):
+**1. Core Logic Tests** (`src/test/unit.test.ts` - 42 tests):
 - Variable name detection logic
 - Python keyword filtering
 - Type matching (exact and substring matching)
@@ -625,7 +625,7 @@ npm test
 
 **Note**: Total unit tests = 42 + 12 + 35 + 64 + 29 + 31 = **213 tests**
 
-**7. Integration Tests** (`src/test/suite/arrayInspector.test.ts`):
+**7. Integration Tests** (`src/test/suite/arrayInspector.test.ts` - 5 basic tests):
 Full VSCode environment required:
 - ArrayInspectorProvider initialization
 - Configuration handling
@@ -635,6 +635,85 @@ Full VSCode environment required:
 - Cursor position detection
 
 Run with: `npm test` (requires VSCode installation, not available in headless environment)
+
+**8. GUI Integration Tests** (`src/test/suite/integration.test.ts` - 8 comprehensive tests):
+These tests simulate real user interactions with the extension in a live VSCode instance. They test end-to-end functionality including:
+
+**File and Editor Operations**:
+- Opening Python files programmatically
+- Showing documents in editors
+- Verifying file content and language type
+
+**Debug Session Management**:
+- Starting debug sessions programmatically with custom configurations
+- Setting breakpoints at specific code lines
+- Waiting for breakpoints to be hit
+- Handling debug lifecycle events (session start, stack changes)
+- Stopping debug sessions cleanly
+
+**User Interaction Simulation**:
+- Simulating cursor selection on variables (`editor.selection = ...`)
+- Detecting variable names at cursor positions
+- Simulating cursor selection on attribute chains (`obj.array`)
+- Testing word detection with VSCode's native APIs
+
+**Panel State Verification**:
+- Verifying tree view structure (root items, sections, children)
+- Checking "In Scope" section contains discovered arrays
+- Verifying array names appear correctly in the panel
+- Testing pinning and unpinning through the provider API
+- Verifying pinned arrays persist in the "Pinned" section
+
+**Feature Testing**:
+- Display mode toggling (OneLine → TwoLine → Expanded → OneLine)
+- Attribute chain detection (e.g., `array_within_object.aa`)
+- Multiple array detection in same scope
+- Panel updates during active debug sessions
+
+**Test Infrastructure**:
+- Uses `@vscode/test-electron` to launch VSCode instances
+- Opens the extension root as workspace to access `test-examples/`
+- Configures debug sessions with `debugpy` type
+- Handles async debug events with Promises
+- Provides timeouts for slow operations (up to 60s for suite setup)
+
+**Running GUI Integration Tests**:
+```bash
+# Run all tests including GUI integration tests
+npm test
+
+# Or use the launch configuration "Run Integration Tests" in VSCode
+# This allows debugging the tests with breakpoints
+```
+
+**Debugging Integration Tests**:
+Use the "Run Integration Tests" launch configuration in `.vscode/launch.json` to:
+- Set breakpoints in test code
+- Step through test execution
+- Inspect VSCode API calls
+- Debug test failures interactively
+
+**Requirements**:
+- Python installed with `numpy` package
+- `debugpy` debug adapter
+- VSCode or VSCode-compatible test runner
+- Write permissions for temporary test workspaces
+
+**Test Coverage Summary**:
+- Opening files and showing in editor: ✓
+- Starting debug sessions and hitting breakpoints: ✓
+- Simulating variable selection with cursor: ✓
+- Verifying panel updates during debug: ✓
+- Pin/unpin functionality: ✓
+- Display mode toggling: ✓
+- Attribute chain detection: ✓
+
+These GUI tests ensure that the extension works correctly from a user's perspective, not just at the unit level. They catch integration issues that unit tests cannot detect, such as:
+- Debug adapter communication problems
+- Tree view rendering issues
+- Event handler registration failures
+- Timing-related bugs in async operations
+- VSCode API usage errors
 
 ### Test Configuration
 
@@ -755,7 +834,8 @@ git push origin release/v0.2.0
   - `src/test/formatting.test.ts` - Formatting functions (64 tests)
   - `src/test/display-mode.test.ts` - Display mode logic (29 tests)
   - `src/test/array-info-item.test.ts` - ArrayInfoItem class (31 tests)
-- **Integration tests**: `src/test/suite/arrayInspector.test.ts` (requires VSCode)
+- **Integration tests**: `src/test/suite/arrayInspector.test.ts` (basic integration tests, requires VSCode)
+- **GUI integration tests**: `src/test/suite/integration.test.ts` (comprehensive end-to-end tests, requires VSCode + Python + numpy)
 - **Test infrastructure**: `src/test/runTest.ts`, `src/test/suite/index.ts`
 - **Configuration**: `package.json`, `.mocharc.json`, `tsconfig.json`
 - **GitHub Actions**: `.github/workflows/publish.yml` - Automated deployment on tag push
