@@ -25,14 +25,18 @@ export class ArrayInspectorProvider implements vscode.TreeDataProvider<ArrayInfo
     private displayMode: DisplayMode = DisplayMode.OneLine;
     private treeView: vscode.TreeView<ArrayInfoItem> | undefined;
     private sectionCollapsedStates: Map<string, boolean> = new Map();
+    private nameCompressionEnabled: boolean = false;
+    private maxNameLength: number = 30;
 
     constructor(private outputChannel: vscode.OutputChannel) {
         const config = vscode.workspace.getConfiguration('arrayInspector');
         this.supportedTypes = new Set(config.get<string[]>('supportedTypes', []));
         this.attributes = config.get<string[]>('attributes', ['shape', 'dtype', 'device']);
+        this.maxNameLength = config.get<number>('maxNameLength', 30);
 
         this.outputChannel.appendLine(`Configured supported types: ${Array.from(this.supportedTypes).join(', ')}`);
         this.outputChannel.appendLine(`Configured attributes: ${this.attributes.join(', ')}`);
+        this.outputChannel.appendLine(`Max name length: ${this.maxNameLength}`);
 
         // Listen to configuration changes
         vscode.workspace.onDidChangeConfiguration((e) => {
@@ -88,6 +92,7 @@ export class ArrayInspectorProvider implements vscode.TreeDataProvider<ArrayInfo
         const config = vscode.workspace.getConfiguration('arrayInspector');
         this.supportedTypes = new Set(config.get<string[]>('supportedTypes', []));
         this.attributes = config.get<string[]>('attributes', ['shape', 'dtype', 'device']);
+        this.maxNameLength = config.get<number>('maxNameLength', 30);
     }
 
     async refresh(): Promise<void> {
@@ -244,6 +249,16 @@ export class ArrayInspectorProvider implements vscode.TreeDataProvider<ArrayInfo
         }
     }
 
+    async toggleNameCompression(): Promise<void> {
+        this.nameCompressionEnabled = !this.nameCompressionEnabled;
+        this.outputChannel.appendLine(`Name compression ${this.nameCompressionEnabled ? 'enabled' : 'disabled'}`);
+        await this.refresh();
+    }
+
+    getNameCompressionEnabled(): boolean {
+        return this.nameCompressionEnabled;
+    }
+
 
     getTreeItem(element: ArrayInfoItem): vscode.TreeItem {
         return element;
@@ -325,7 +340,7 @@ export class ArrayInspectorProvider implements vscode.TreeDataProvider<ArrayInfo
 
         if (sectionType === 'highlighted') {
             if (this.currentHoveredArray) {
-                items.push(ArrayInfoItem.createHighlighted(this.currentHoveredArray, this.displayMode));
+                items.push(ArrayInfoItem.createHighlighted(this.currentHoveredArray, this.displayMode, this.nameCompressionEnabled, this.maxNameLength));
             } else {
                 // Show "No highlighted array" message
                 const noArrayInfo: ArrayInfo = {
@@ -337,7 +352,7 @@ export class ArrayInspectorProvider implements vscode.TreeDataProvider<ArrayInfo
                     isPinned: false,
                     isAvailable: false
                 };
-                items.push(new ArrayInfoItem(noArrayInfo, vscode.TreeItemCollapsibleState.None, this.displayMode, true, false, undefined, false));
+                items.push(new ArrayInfoItem(noArrayInfo, vscode.TreeItemCollapsibleState.None, this.displayMode, true, false, undefined, false, undefined, false, 0));
             }
         } else if (sectionType === 'pinned') {
             for (const [name] of this.pinnedArrays) {
@@ -351,12 +366,12 @@ export class ArrayInspectorProvider implements vscode.TreeDataProvider<ArrayInfo
                     // Mark as pinned
                     const pinnedInfo = { ...info, isPinned: true };
                     const collapsibleState = this.getCollapsibleStateForMode();
-                    items.push(new ArrayInfoItem(pinnedInfo, collapsibleState, this.displayMode));
+                    items.push(new ArrayInfoItem(pinnedInfo, collapsibleState, this.displayMode, false, false, undefined, false, undefined, this.nameCompressionEnabled, this.maxNameLength));
                 } else {
                     // Pinned array not in current scope - show as unavailable
                     const unavailableInfo = this.createUnavailableInfo(name, true);
                     const collapsibleState = this.getCollapsibleStateForMode();
-                    items.push(new ArrayInfoItem(unavailableInfo, collapsibleState, this.displayMode));
+                    items.push(new ArrayInfoItem(unavailableInfo, collapsibleState, this.displayMode, false, false, undefined, false, undefined, this.nameCompressionEnabled, this.maxNameLength));
                 }
             }
             // Sort pinned arrays by name
@@ -365,7 +380,7 @@ export class ArrayInspectorProvider implements vscode.TreeDataProvider<ArrayInfo
             for (const [, info] of this.localsArrays) {
                 if (info.isAvailable) {
                     const collapsibleState = this.getCollapsibleStateForMode();
-                    items.push(new ArrayInfoItem(info, collapsibleState, this.displayMode));
+                    items.push(new ArrayInfoItem(info, collapsibleState, this.displayMode, false, false, undefined, false, undefined, this.nameCompressionEnabled, this.maxNameLength));
                 }
             }
             // Sort locals arrays by name
@@ -374,7 +389,7 @@ export class ArrayInspectorProvider implements vscode.TreeDataProvider<ArrayInfo
             for (const [, info] of this.globalsArrays) {
                 if (info.isAvailable) {
                     const collapsibleState = this.getCollapsibleStateForMode();
-                    items.push(new ArrayInfoItem(info, collapsibleState, this.displayMode));
+                    items.push(new ArrayInfoItem(info, collapsibleState, this.displayMode, false, false, undefined, false, undefined, this.nameCompressionEnabled, this.maxNameLength));
                 }
             }
             // Sort globals arrays by name
@@ -585,7 +600,7 @@ export class ArrayInspectorProvider implements vscode.TreeDataProvider<ArrayInfo
             isPinned: false,
             isAvailable: true
         };
-        return new ArrayInfoItem(dummyInfo, vscode.TreeItemCollapsibleState.None, this.displayMode, true, false, undefined, false, parentInfo);
+        return new ArrayInfoItem(dummyInfo, vscode.TreeItemCollapsibleState.None, this.displayMode, true, false, undefined, false, parentInfo, false, 0);
     }
 
     async handleHover(expression: string): Promise<void> {
@@ -1078,9 +1093,16 @@ export class ArrayInfoItem extends vscode.TreeItem {
         isSection: boolean = false,
         sectionType?: string,
         isHighlighted: boolean = false,
-        parentArrayInfo?: ArrayInfo
+        parentArrayInfo?: ArrayInfo,
+        nameCompressionEnabled: boolean = false,
+        maxNameLength: number = 30
     ) {
-        super(arrayInfo.name, collapsibleState);
+        // Apply name compression if enabled
+        const displayName = nameCompressionEnabled && !isAttribute && !isSection
+            ? ArrayInfoItem.compressName(arrayInfo.name, maxNameLength)
+            : arrayInfo.name;
+
+        super(displayName, collapsibleState);
 
         this.isSection = isSection;
         this.sectionType = sectionType;
@@ -1163,11 +1185,15 @@ export class ArrayInfoItem extends vscode.TreeItem {
             DisplayMode.OneLine,
             false,
             true,
-            sectionType
+            sectionType,
+            false,
+            undefined,
+            false,
+            0
         );
     }
 
-    static createHighlighted(arrayInfo: ArrayInfo, displayMode: DisplayMode): ArrayInfoItem {
+    static createHighlighted(arrayInfo: ArrayInfo, displayMode: DisplayMode, nameCompressionEnabled: boolean = false, maxNameLength: number = 30): ArrayInfoItem {
         // Determine collapsible state based on display mode (same as other arrays)
         let collapsibleState = vscode.TreeItemCollapsibleState.None;
         if (displayMode === DisplayMode.TwoLine || displayMode === DisplayMode.Expanded) {
@@ -1181,8 +1207,102 @@ export class ArrayInfoItem extends vscode.TreeItem {
             false,
             false,
             undefined,
-            true
+            true,
+            undefined,
+            nameCompressionEnabled,
+            maxNameLength
         );
+    }
+
+    /**
+     * Compresses a name intelligently according to the following rules:
+     * 1. If name is <= maxLength, return as-is
+     * 2. Try compressing intermediate segments first (b, then c in a.b.c.d)
+     * 3. Then compress first segment (a)
+     * 4. Then compress last segment (d)
+     * 5. For single-segment names, truncate from the end
+     *
+     * @param name The full name (may contain dots for attribute chains)
+     * @param maxLength Maximum allowed length
+     * @returns Compressed name with "..." replacing the compressed part
+     */
+    static compressName(name: string, maxLength: number): string {
+        if (name.length <= maxLength) {
+            return name;
+        }
+
+        const parts = name.split('.');
+
+        // Single segment: truncate from the end
+        if (parts.length === 1) {
+            // Need to leave room for "..."
+            const charsToKeep = maxLength - 3;
+            if (charsToKeep <= 0) {
+                return '...';
+            }
+            return name.substring(0, charsToKeep) + '...';
+        }
+
+        // Multiple segments: try compressing intermediate parts first
+        // Start from the middle and work outwards
+        const indices = Array.from({ length: parts.length }, (_, i) => i);
+
+        // Create priority order: middle segments first, then first, then last
+        const middleIndices = indices.slice(1, -1); // Exclude first and last
+        const priorityOrder: number[] = [];
+
+        // Add middle indices (from innermost to outermost)
+        const midPoint = Math.floor(middleIndices.length / 2);
+        for (let offset = 0; offset < middleIndices.length; offset++) {
+            const leftIndex = midPoint - offset;
+            const rightIndex = midPoint + offset + (middleIndices.length % 2 === 0 ? 1 : 0);
+
+            if (leftIndex >= 0 && leftIndex < middleIndices.length) {
+                priorityOrder.push(middleIndices[leftIndex]);
+            }
+            if (rightIndex >= 0 && rightIndex < middleIndices.length && rightIndex !== leftIndex) {
+                priorityOrder.push(middleIndices[rightIndex]);
+            }
+        }
+
+        // Then add first and last
+        priorityOrder.push(0);
+        priorityOrder.push(parts.length - 1);
+
+        // Try compressing segments in priority order
+        const compressed = new Set<number>();
+        for (const index of priorityOrder) {
+            compressed.add(index);
+
+            // Build the compressed name by manually constructing with dots
+            let result = '';
+            let hasCompressed = false;
+
+            for (let i = 0; i < parts.length; i++) {
+                if (compressed.has(i)) {
+                    if (!hasCompressed) {
+                        if (result.length > 0) {
+                            result += '.';
+                        }
+                        result += '...';
+                        hasCompressed = true;
+                    }
+                } else {
+                    if (result.length > 0 && !hasCompressed) {
+                        result += '.';
+                    }
+                    result += parts[i];
+                    hasCompressed = false;
+                }
+            }
+
+            if (result.length <= maxLength) {
+                return result;
+            }
+        }
+
+        // If all segments are compressed, return just "..."
+        return '...';
     }
 
     private buildTooltip(info: ArrayInfo): string {

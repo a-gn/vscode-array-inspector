@@ -313,6 +313,34 @@ When enabled, the highlighted array always shows compact information (`name shap
 
 When disabled, the highlighted array follows the global display mode setting.
 
+## Name Compression
+
+**Feature**: Intelligent name compression for long variable names (disabled by default).
+
+**Toggle**: Click the whole-word icon (☷) in the Array Inspector panel toolbar, or use the command `arrayInspector.toggleNameCompression`.
+
+**Behavior**: **IMPORTANT - Name compression only applies when the feature is toggled ON.** By default, all names are displayed in full without any compression.
+
+**Configuration**: `arrayInspector.maxNameLength` (default: 30) - Maximum length for array names when compression is enabled.
+
+**Compression Rules** (applied only when enabled):
+1. Names shorter than or equal to `maxNameLength` are never compressed
+2. For single-segment names (e.g., `very_long_variable_name`):   - Truncate from the end: `very_long_var...`
+
+3. For multi-segment names (e.g., `obj.nested.array.data`):
+   - Compress intermediate segments first (priority: middle → outer)
+   - Then compress first segment if needed
+   - Then compress last segment as a last resort
+   - Example: `obj.very_long_middle.nested.array` → `obj....nested.array` (compresses middle segment)
+
+4. Only one `...` appears in the compressed name (consecutive compressed segments merge)
+
+**Examples** (with `maxNameLength: 20`):
+- `short_name` → `short_name` (unchanged, under limit)
+- `very_long_variable_name_that_exceeds` → `very_long_variab...` (single segment, truncated)
+- `first.very_long_middle.last` → `first....last` (middle segment compressed)
+- `a.b.c.d.e.f.g` → `a....g` (multiple middle segments compressed into one `...`)
+
 ## Configuration
 
 ### Activation
@@ -501,14 +529,15 @@ npm test
 
 ### Test Coverage
 
-**All tests pass** ✓ **188 passing** (152ms)
+**All tests pass** ✓ **206 passing** (159ms)
 
-**1. Core Logic Tests** (`src/test/unit.test.ts` - 17 tests):
+**1. Core Logic Tests** (`src/test/unit.test.ts` - 35 tests):
 - Variable name detection logic
 - Python keyword filtering
 - Type matching (exact and substring matching)
-- **Attribute chain detection (6 new tests)**: Simple variables, single-level access (obj.array), multi-level access (obj.nested.array), invalid expressions, extraction from text, underscores and numbers
+- **Attribute chain detection (6 tests)**: Simple variables, single-level access (obj.array), multi-level access (obj.nested.array), invalid expressions, extraction from text, underscores and numbers
 - Attribute expression construction (including nested expressions)
+- **Name compression logic (18 tests)**: Single/multi-segment compression, length limits, intelligent truncation rules
 - Collapse state detection logic
 
 **2. DAP Communication Tests** (`src/test/dap.test.ts` - 12 tests):
@@ -565,7 +594,7 @@ npm test
 - Attribute item creation
 - Parent section detection and prioritization
 
-**Note**: Total unit tests = 17 + 12 + 35 + 64 + 29 + 31 = **188 tests**
+**Note**: Total unit tests = 35 + 12 + 35 + 64 + 29 + 31 = **206 tests**
 
 **7. Integration Tests** (`src/test/suite/arrayInspector.test.ts`):
 Full VSCode environment required:

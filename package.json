@@ -58,6 +58,11 @@
         "command": "arrayInspector.toggleCollapseExpandAll",
         "title": "Toggle Collapse/Expand All",
         "icon": "$(collapse-all)"
+      },
+      {
+        "command": "arrayInspector.toggleNameCompression",
+        "title": "Toggle Name Compression",
+        "icon": "$(whole-word)"
       }
     ],
     "menus": {
@@ -69,6 +74,11 @@
         },
         {
           "command": "arrayInspector.toggleCollapseExpandAll",
+          "when": "view == arrayInspectorView",
+          "group": "navigation"
+        },
+        {
+          "command": "arrayInspector.toggleNameCompression",
           "when": "view == arrayInspectorView",
           "group": "navigation"
         }
@@ -146,6 +156,12 @@
           "default": "torch.",
           "pattern": "^(|[a-zA-Z_][a-zA-Z0-9_]*(?:\\.[a-zA-Z_][a-zA-Z0-9_]*)*\\.)$",
           "description": "Prefix for PyTorch dtypes and devices when copying creation options (e.g., 'torch.' for 'torch.int32' and 'torch.device()'). Must be empty or end with '.' and be a valid Python module path."
+        },
+        "arrayInspector.maxNameLength": {
+          "type": "number",
+          "default": 30,
+          "minimum": 10,
+          "description": "Maximum length for array names when name compression is enabled. Names longer than this will be compressed intelligently."
         }
       }
     }

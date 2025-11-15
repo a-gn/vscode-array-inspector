@@ -67,6 +67,12 @@ export function activate(context: vscode.ExtensionContext): void {
         })
     );
 
+    context.subscriptions.push(
+        vscode.commands.registerCommand('arrayInspector.toggleNameCompression', async () => {
+            await arrayInspectorProvider.toggleNameCompression();
+        })
+    );
+
     // Listen to mouse hover events
     context.subscriptions.push(
         vscode.window.onDidChangeTextEditorSelection(handleSelectionChange)

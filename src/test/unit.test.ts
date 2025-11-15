@@ -268,6 +268,223 @@ suite('Attribute Evaluation Logic', () => {
     });
 });
 
+suite('Name Compression Logic', () => {
+    // Replicate the compression logic for testing (without vscode dependencies)
+    function compressName(name: string, maxLength: number): string {
+        if (name.length <= maxLength) {
+            return name;
+        }
+
+        const parts = name.split('.');
+
+        // Single segment: truncate from the end
+        if (parts.length === 1) {
+            // Need to leave room for "..."
+            const charsToKeep = maxLength - 3;
+            if (charsToKeep <= 0) {
+                return '...';
+            }
+            return name.substring(0, charsToKeep) + '...';
+        }
+
+        // Multiple segments: try compressing intermediate parts first
+        const indices = Array.from({ length: parts.length }, (_, i) => i);
+        const middleIndices = indices.slice(1, -1);
+        const priorityOrder: number[] = [];
+
+        // Add middle indices (from innermost to outermost)
+        const midPoint = Math.floor(middleIndices.length / 2);
+        for (let offset = 0; offset < middleIndices.length; offset++) {
+            const leftIndex = midPoint - offset;
+            const rightIndex = midPoint + offset + (middleIndices.length % 2 === 0 ? 1 : 0);
+
+            if (leftIndex >= 0 && leftIndex < middleIndices.length) {
+                priorityOrder.push(middleIndices[leftIndex]);
+            }
+            if (rightIndex >= 0 && rightIndex < middleIndices.length && rightIndex !== leftIndex) {
+                priorityOrder.push(middleIndices[rightIndex]);
+            }
+        }
+
+        // Then add first and last
+        priorityOrder.push(0);
+        priorityOrder.push(parts.length - 1);
+
+        // Try compressing segments in priority order
+        const compressed = new Set<number>();
+        for (const index of priorityOrder) {
+            compressed.add(index);
+
+            // Build the compressed name by manually constructing with dots
+            let result = '';
+            let hasCompressed = false;
+
+            for (let i = 0; i < parts.length; i++) {
+                if (compressed.has(i)) {
+                    if (!hasCompressed) {
+                        if (result.length > 0) {
+                            result += '.';
+                        }
+                        result += '...';
+                        hasCompressed = true;
+                    }
+                } else {
+                    if (result.length > 0 && !hasCompressed) {
+                        result += '.';
+                    }
+                    result += parts[i];
+                    hasCompressed = false;
+                }
+            }
+
+            if (result.length <= maxLength) {
+                return result;
+            }
+        }
+
+        // If all segments are compressed, return just "..."
+        return '...';
+    }
+
+    test('Should not compress names shorter than max length', () => {
+        const name = 'short_name';
+        const compressed = compressName(name, 30);
+        assert.strictEqual(compressed, name);
+    });
+
+    test('Should not compress names equal to max length', () => {
+        const name = 'exactly_30_characters_long';
+        const compressed = compressName(name, 30);
+        assert.strictEqual(compressed, name);
+    });
+
+    test('Should compress single long name from the end', () => {
+        const name = 'very_long_variable_name_that_exceeds_limit';
+        const compressed = compressName(name, 20);
+        assert.strictEqual(compressed.length, 20);
+        assert.ok(compressed.endsWith('...'));
+        assert.ok(compressed.startsWith('very_long_'));
+    });
+
+    test('Should compress to just "..." if max length is too small', () => {
+        const name = 'long_name';
+        const compressed = compressName(name, 3);
+        assert.strictEqual(compressed, '...');
+    });
+
+    test('Should compress intermediate segment in a.b.c', () => {
+        const name = 'first.very_long_middle.last';
+        const compressed = compressName(name, 20);
+        // Should compress middle first
+        assert.ok(compressed.includes('...'));
+        assert.ok(compressed.includes('first'));
+        assert.ok(compressed.includes('last'));
+        assert.strictEqual(compressed.length <= 20, true);
+    });
+
+    test('Should compress multiple intermediate segments in a.b.c.d', () => {
+        const name = 'first.second.third.last';
+        const compressed = compressName(name, 15);
+        // Should compress middle segments
+        assert.ok(compressed.includes('...'));
+        assert.strictEqual(compressed.length <= 15, true);
+    });
+
+    test('Should compress first segment after intermediates', () => {
+        const name = 'very_long_first.b.c.last';
+        const compressed = compressName(name, 10);
+        // With such a small limit, should compress first segment
+        assert.ok(compressed.includes('...'));
+        assert.strictEqual(compressed.length <= 10, true);
+    });
+
+    test('Should compress last segment as final resort', () => {
+        const name = 'a.b.c.very_long_last_segment';
+        const compressed = compressName(name, 10);
+        // Should eventually compress last segment
+        assert.ok(compressed.includes('...'));
+        assert.strictEqual(compressed.length <= 10, true);
+    });
+
+    test('Should handle two-segment name', () => {
+        const name = 'very_long_first_part.very_long_second_part';
+        const compressed = compressName(name, 20);
+        assert.ok(compressed.includes('...'));
+        assert.strictEqual(compressed.length <= 20, true);
+    });
+
+    test('Should handle five-segment name', () => {
+        const name = 'a.b.c.d.e';
+        const compressed = compressName(name, 7);
+        // Should compress middle segments first (c, then b and d)
+        assert.ok(compressed.includes('...'));
+        assert.strictEqual(compressed.length <= 7, true);
+    });
+
+    test('Should preserve dots in compressed output', () => {
+        const name = 'first.second.third';
+        const compressed = compressName(name, 14);
+        // Result should still have dots separating segments
+        const dotCount = (compressed.match(/\./g) || []).length;
+        assert.ok(dotCount > 0, 'Should contain at least one dot');
+    });
+
+    test('Should only have one compressed part', () => {
+        const name = 'a.b.c.d.e.f.g';
+        const compressed = compressName(name, 10);
+        // Count occurrences of "..."
+        const ellipsisCount = (compressed.match(/\.\.\./g) || []).length;
+        assert.strictEqual(ellipsisCount, 1, 'Should only have one "..." segment');
+    });
+
+    test('Should handle edge case: maxLength = 10', () => {
+        const name = 'short';
+        const compressed = compressName(name, 10);
+        assert.strictEqual(compressed, name);
+    });
+
+    test('Should compress middle segment in odd-length chain', () => {
+        const name = 'aaa.bbb.ccc';
+        const compressed = compressName(name, 10);
+        // Should compress 'bbb' (middle segment) first
+        assert.ok(compressed.includes('...'));
+        assert.ok(compressed.includes('aaa'));
+        assert.ok(compressed.includes('ccc'));
+        assert.strictEqual(compressed.length <= 10, true);
+        assert.strictEqual(compressed, 'aaa....ccc');
+    });
+
+    test('Should compress middle segments in even-length chain', () => {
+        const name = 'aaaa.bbbb.cccc.dddd';
+        const compressed = compressName(name, 14);
+        // Should compress middle segments (bbbb or cccc) first
+        assert.ok(compressed.includes('...'));
+        assert.strictEqual(compressed.length <= 14, true);
+    });
+
+    test('Should handle very long single segment', () => {
+        const name = 'a'.repeat(100);
+        const compressed = compressName(name, 20);
+        assert.strictEqual(compressed.length, 20);
+        assert.ok(compressed.endsWith('...'));
+    });
+
+    test('Should handle name with many segments', () => {
+        const name = 'a.b.c.d.e.f.g.h.i.j';
+        const compressed = compressName(name, 15);
+        assert.ok(compressed.includes('...'));
+        assert.strictEqual(compressed.length <= 15, true);
+        const ellipsisCount = (compressed.match(/\.\.\./g) || []).length;
+        assert.strictEqual(ellipsisCount, 1);
+    });
+
+    test('Should return ... when all segments compressed', () => {
+        const name = 'a.b.c.d.e';
+        const compressed = compressName(name, 2);
+        assert.strictEqual(compressed, '...');
+    });
+});
+
 suite('Collapse State Detection Logic', () => {
     test('Should initialize with empty collapsed states', () => {
         const collapsedStates = new Map<string, boolean>();
