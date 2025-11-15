@@ -15,7 +15,8 @@ import numpy as np
 
 @dataclass
 class NestedArray:
-    a: np.ndarray
+    aa: np.ndarray
+    bb: "NestedArray | None"
 
 
 def main():
@@ -28,8 +29,16 @@ def main():
     result = arr1 + arr2[:100, :50, 0]
     mean_value = arr3.mean()
 
-    array_within_object = NestedArray(a=np.zeros((5, 5), dtype=np.uint32))
-    array_within_object.a
+    array_within_object = NestedArray(
+        aa=np.zeros((5, 5), dtype=np.uint32),
+        bb=NestedArray(aa=np.ones((10, 10), dtype=np.float16), bb=None),
+    )
+    array_within_object.aa
+    array_within_object.aa.shape
+    array_within_object.bb
+    assert array_within_object.bb is not None
+    array_within_object.bb.aa
+    array_within_object.bb.bb
 
     # Create different dtypes
     int_array = np.arange(20, dtype=np.int64)
