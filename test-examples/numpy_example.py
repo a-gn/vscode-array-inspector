@@ -34,6 +34,9 @@ def main():
         bb=NestedArray(aa=np.ones((10, 10), dtype=np.float16), bb=None),
     )
     array_within_object.aa
+    array_within_object. aa
+    array_within_object. \
+        aa
     array_within_object.aa.shape
     array_within_object.bb
     assert array_within_object.bb is not None
