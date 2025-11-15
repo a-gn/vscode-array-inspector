@@ -67,6 +67,12 @@ export function activate(context: vscode.ExtensionContext): void {
         })
     );
 
+    context.subscriptions.push(
+        vscode.commands.registerCommand('arrayInspector.toggleNameCompression', async () => {
+            await arrayInspectorProvider.toggleNameCompression();
+        })
+    );
+
     // Listen to mouse hover events
     context.subscriptions.push(
         vscode.window.onDidChangeTextEditorSelection(handleSelectionChange)
@@ -122,11 +128,10 @@ function handleSelectionChange(event: vscode.TextEditorSelectionChangeEvent): vo
 }
 
 function detectHoveredVariable(editor: vscode.TextEditor, position: vscode.Position): void {
-    // Get the word at the cursor position
-    const wordRange = editor.document.getWordRangeAtPosition(position, /[a-zA-Z_][a-zA-Z0-9_]*/);
+    // Use VSCode's native word detection to find the identifier at the cursor position
+    const identifierRange = editor.document.getWordRangeAtPosition(position);
 
-    if (!wordRange) {
-        outputChannel.appendLine('No word found at cursor position');
+    if (!identifierRange) {
         // Clear highlighted if we moved away from a variable
         if (lastHighlightedWord !== undefined) {
             outputChannel.appendLine('Clearing highlighted array (no word at cursor)');
@@ -136,8 +141,29 @@ function detectHoveredVariable(editor: vscode.TextEditor, position: vscode.Posit
         return;
     }
 
-    const word = editor.document.getText(wordRange);
-    outputChannel.appendLine(`Detected word: "${word}"`);
+    const identifier = editor.document.getText(identifierRange);
+    outputChannel.appendLine(`Identifier at cursor: "${identifier}"`);
+
+    // Get the full attribute chain (if any) using the attribute chain regex
+    const attributeChainPattern = /[a-zA-Z_][a-zA-Z0-9_]*(?:\.[a-zA-Z_][a-zA-Z0-9_]*)*/;
+    const fullChainRange = editor.document.getWordRangeAtPosition(position, attributeChainPattern);
+
+    let word: string;
+
+    if (!fullChainRange) {
+        // No attribute chain, just use the identifier
+        word = identifier;
+    } else {
+        // We have a full chain, cut it at the highlighted identifier's end position
+        const fullChain = editor.document.getText(fullChainRange);
+        outputChannel.appendLine(`Full chain: "${fullChain}"`);
+
+        // Calculate where to cut the chain based on the highlighted identifier's end position
+        const cutOffset = identifierRange.end.character - fullChainRange.start.character;
+        word = fullChain.substring(0, cutOffset);
+    }
+
+    outputChannel.appendLine(`Final word: "${word}"`);
 
     // Ignore keywords and common built-ins
     const keywords = new Set([

@@ -50,16 +50,24 @@ Arrays out of scope → Removed from panel automatically
 **Responsibilities**:
 - Activate extension and register providers
 - Listen to `onDidChangeTextEditorSelection` events (when cursor moves)
-- Detect variable names at cursor position
+- Detect variable names and attribute chains at cursor position
 - Filter out Python keywords
 - Delegate to ArrayInspectorProvider
 
 **Key Functions**:
 - `activate()`: Sets up extension, creates output channel for logging
 - `handleSelectionChange()`: Fires when user clicks/moves cursor
-- `detectHoveredVariable()`: Extracts word at cursor position, clears highlighted when moving away
+- `detectHoveredVariable()`: Extracts word or attribute chain at cursor position, clears highlighted when moving away
 
-**Important Detail**: Uses `onDidChangeTextEditorSelection`, NOT true hover events. User must **click** or use **arrow keys** to move cursor onto variable.
+**Supported Expressions**:
+- Simple variable names: `arr1`, `my_array`
+- Single-level attribute access: `obj.array`, `data.tensor`
+- Multi-level attribute access: `obj.nested.array`, `model.layer.weights`
+
+**Important Details**:
+- Uses `onDidChangeTextEditorSelection`, NOT true hover events. User must **click** or use **arrow keys** to move cursor onto variable or attribute chain.
+- **VSCode-native word detection with position-based cutting**: Uses VSCode's built-in `getWordRangeAtPosition()` API (without custom regex) to detect the identifier at the cursor, then uses the same API with attribute chain regex to find the full chain, and cuts it at the identifier's end position using simple substring math.
+- **Cursor-aware attribute chains**: When clicking on a segment within an attribute chain, only the chain up to that segment is highlighted. For example, clicking on `arr3` in `arr3.mean()` highlights only `arr3`, not `arr3.mean`. Clicking on `aa` in `obj.aa.shape` highlights `obj.aa`, not `obj.aa.shape`.
 
 #### 2. `src/arrayInspector.ts` - Tree View Provider
 
@@ -166,6 +174,30 @@ await session.customRequest('evaluate', {
 - [src/arrayInspector.ts:253-279](src/arrayInspector.ts#L253-L279): Updated `evaluateAttribute()` to accept and use frameId parameter
 - [src/extension.ts:62-77](src/extension.ts#L62-L77): Fixed log spam by silently ignoring non-Python file selection changes
 - Added detailed logging at each step for easier debugging
+
+## Recent Fix: VSCode-Native Word Detection for Attribute Chains
+
+**Problem**: When clicking on a segment in an attribute chain, the wrong expression was being highlighted. For example, clicking on `arr3` in `arr3.mean()` would highlight `arr3.mean`, and positioning the cursor just after `a` in `a.b` would highlight `b` instead of `a`.
+
+**Root Cause**: The custom regex pattern `/[a-zA-Z_][a-zA-Z0-9_]*(?:\.[a-zA-Z_][a-zA-Z0-9_]*)*/` combined with the `truncateAtCursor()` function tried to match the entire attribute chain and then manually truncate it. This logic didn't match VSCode's native word boundary detection, causing misalignment between what VSCode visually highlighted and what the extension detected.
+
+**Solution**: Replaced the custom approach with position-based cutting using VSCode's native APIs:
+1. Use `getWordRangeAtPosition()` WITHOUT custom regex to detect the identifier at the cursor (matches VSCode's visual highlighting)
+2. Use `getWordRangeAtPosition()` WITH attribute chain regex to find the full chain containing that identifier
+3. Cut the full chain at the identifier's end position using simple substring math
+4. This approach ensures the extension's behavior matches exactly what the user sees highlighted in the editor
+
+**Changes Made**:
+- [src/extension.ts:130-198](src/extension.ts#L130-L198): Replaced custom regex-based detection with position-based cutting
+- Removed old `buildAttributeChain()` looping function - no longer needed
+- [src/test/unit.test.ts:371-407](src/test/unit.test.ts#L371-L407): Updated test helper to use position-based cutting instead of backward looping
+- [src/test/unit.test.ts:409-527](src/test/unit.test.ts#L409-L527): All 13 tests pass with new implementation
+
+**Benefits**:
+- Cursor position detection now matches VSCode's visual word highlighting exactly
+- Much simpler implementation - no manual looping over text
+- More reliable and maintainable (uses VSCode APIs and simple position math)
+- Better handling of edge cases (parentheses, function calls, invalid syntax)
 
 ### Debugging Strategy (if issues persist)
 
@@ -308,6 +340,34 @@ When enabled, the highlighted array always shows compact information (`name shap
 
 When disabled, the highlighted array follows the global display mode setting.
 
+## Name Compression
+
+**Feature**: Intelligent name compression for long variable names (disabled by default).
+
+**Toggle**: Click the whole-word icon (☷) in the Array Inspector panel toolbar, or use the command `arrayInspector.toggleNameCompression`.
+
+**Behavior**: **IMPORTANT - Name compression only applies when the feature is toggled ON.** By default, all names are displayed in full without any compression.
+
+**Configuration**: `arrayInspector.maxNameLength` (default: 30) - Maximum length for array names when compression is enabled.
+
+**Compression Rules** (applied only when enabled):
+1. Names shorter than or equal to `maxNameLength` are never compressed
+2. For single-segment names (e.g., `very_long_variable_name`):   - Truncate from the end: `very_long_var...`
+
+3. For multi-segment names (e.g., `obj.nested.array.data`):
+   - Compress intermediate segments first (priority: middle → outer)
+   - Then compress first segment if needed
+   - Then compress last segment as a last resort
+   - Example: `obj.very_long_middle.nested.array` → `obj....nested.array` (compresses middle segment)
+
+4. Only one `...` appears in the compressed name (consecutive compressed segments merge)
+
+**Examples** (with `maxNameLength: 20`):
+- `short_name` → `short_name` (unchanged, under limit)
+- `very_long_variable_name_that_exceeds` → `very_long_variab...` (single segment, truncated)
+- `first.very_long_middle.last` → `first....last` (middle segment compressed)
+- `a.b.c.d.e.f.g` → `a....g` (multiple middle segments compressed into one `...`)
+
 ## Configuration
 
 ### Activation
@@ -405,7 +465,10 @@ print(arr.shape)           # Click on 'arr' when paused
 2. **The Array Inspector panel automatically opens** in the Debug tab (below the Watch panel)
 3. **Set a breakpoint AFTER the line where arrays are created** (e.g., if `arr1 = np.zeros(...)` is on line 17, set breakpoint on line 18)
 4. **Wait for debugger to pause** at the breakpoint
-5. **Click on an array variable name** in the code editor (e.g., click on `arr1` in the line above)
+5. **Click on an array variable name or attribute** in the code editor
+   - Simple variables: click on `arr1`
+   - Object attributes: click on `obj.array` or `data.tensor`
+   - Nested attributes: click on `obj.nested.array` or `model.layer.weights`
 6. **Check the Array Inspector panel** in the Debug tab (should update within 100ms)
 7. **Expand the array item** to see shape, dtype, and device attributes
 8. **Pin arrays** to keep them visible when navigating to different stack frames
@@ -413,6 +476,7 @@ print(arr.shape)           # Click on 'arr' when paused
 **Important**:
 - The extension **only activates when debugging Python**, not other languages
 - Variables must be **already defined** when the debugger pauses. If you set a breakpoint on the line where a variable is created, that variable won't exist yet!
+- **New**: You can now inspect arrays that are attributes of objects, not just simple variables. Click on any part of an attribute chain (e.g., `obj`, `.array`, or anywhere in `obj.array`) to highlight the entire chain.
 
 ### What to Expect
 
@@ -492,13 +556,17 @@ npm test
 
 ### Test Coverage
 
-**All tests pass** ✓ **180 passing** (155ms)
+**All tests pass** ✓ **61 passing** (22ms)
 
-**1. Core Logic Tests** (`src/test/unit.test.ts` - 9 tests):
+**1. Core Logic Tests** (`src/test/unit.test.ts` - 61 tests):
 - Variable name detection logic
 - Python keyword filtering
 - Type matching (exact and substring matching)
-- Attribute expression construction
+- **Attribute chain detection (6 tests)**: Simple variables, single-level access (obj.array), multi-level access (obj.nested.array), invalid expressions, extraction from text, underscores and numbers
+- Attribute expression construction (including nested expressions)
+- **Cursor-based truncation (7 tests, legacy)**: Truncating attribute chains at cursor position, handling multi-level chains, segment boundaries, varying lengths
+- **VSCode-native word detection (13 tests)**: Using VSCode's built-in word detection with backward chain building, handling nested attributes, edge cases, bug demonstrations for cursor position correctness
+- **Name compression logic (18 tests)**: Single/multi-segment compression, length limits, intelligent truncation rules
 - Collapse state detection logic
 
 **2. DAP Communication Tests** (`src/test/dap.test.ts` - 12 tests):
@@ -555,7 +623,7 @@ npm test
 - Attribute item creation
 - Parent section detection and prioritization
 
-**Note**: Total unit tests = 9 + 12 + 35 + 64 + 29 + 31 = **180 tests**
+**Note**: Total unit tests = 42 + 12 + 35 + 64 + 29 + 31 = **213 tests**
 
 **7. Integration Tests** (`src/test/suite/arrayInspector.test.ts`):
 Full VSCode environment required:
