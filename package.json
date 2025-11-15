@@ -120,9 +120,23 @@
             "jax.Array",
             "jaxlib.xla_extension.ArrayImpl",
             "numpy.ndarray",
+            "numpy.float64",
+            "numpy.float32",
+            "numpy.float16",
+            "numpy.int64",
+            "numpy.int32",
+            "numpy.int16",
+            "numpy.int8",
+            "numpy.uint64",
+            "numpy.uint32",
+            "numpy.uint16",
+            "numpy.uint8",
+            "numpy.bool_",
+            "numpy.complex64",
+            "numpy.complex128",
             "torch.Tensor"
           ],
-          "description": "Python types to show in the Array Inspector"
+          "description": "Python types to show in the Array Inspector (includes arrays and numpy scalars)"
         },
         "arrayInspector.attributes": {
           "type": "array",

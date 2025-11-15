@@ -8,6 +8,11 @@ import * as assert from 'assert';
 suite('Shape Formatting Tests', () => {
     // Simulating the formatShape method from ArrayInspectorProvider
     function formatShape(shape: string, type: string): string {
+        // Detect scalars - shape is an empty tuple ()
+        if (shape === '()') {
+            return '(scalar)';
+        }
+
         // Convert torch.Size([2, 2]) to (2, 2)
         if (type.includes('torch.Tensor') || type.includes('Tensor')) {
             const sizeMatch = shape.match(/torch\.Size\(\[([^\]]*)\]\)/);
@@ -18,6 +23,30 @@ suite('Shape Formatting Tests', () => {
         // Return as-is if no pattern matched
         return shape;
     }
+
+    test('Should detect NumPy scalar shape and return (scalar)', () => {
+        const input = '()';
+        const result = formatShape(input, 'numpy.float64');
+        assert.strictEqual(result, '(scalar)');
+    });
+
+    test('Should detect scalar shape for numpy.int32', () => {
+        const input = '()';
+        const result = formatShape(input, 'numpy.int32');
+        assert.strictEqual(result, '(scalar)');
+    });
+
+    test('Should detect scalar shape for numpy.bool_', () => {
+        const input = '()';
+        const result = formatShape(input, 'numpy.bool_');
+        assert.strictEqual(result, '(scalar)');
+    });
+
+    test('Should detect scalar shape regardless of array type', () => {
+        const input = '()';
+        const result = formatShape(input, 'numpy.ndarray');
+        assert.strictEqual(result, '(scalar)');
+    });
 
     test('Should format torch.Size to tuple format', () => {
         const input = 'torch.Size([2, 3])';
@@ -37,7 +66,7 @@ suite('Shape Formatting Tests', () => {
         assert.strictEqual(result, '(100)');
     });
 
-    test('Should handle zero-dimensional torch.Size', () => {
+    test('Should handle zero-dimensional torch.Size as scalar', () => {
         const input = 'torch.Size([])';
         const result = formatShape(input, 'torch.Tensor');
         assert.strictEqual(result, '()');

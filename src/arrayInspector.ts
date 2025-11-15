@@ -488,6 +488,11 @@ export class ArrayInspectorProvider implements vscode.TreeDataProvider<ArrayInfo
     }
 
     private formatShape(shape: string, type: string): string {
+        // Detect scalars - shape is an empty tuple ()
+        if (shape === '()') {
+            return '(scalar)';
+        }
+
         // Convert torch.Size([2, 2]) to (2, 2)
         if (type.includes('torch.Tensor') || type.includes('Tensor')) {
             const sizeMatch = shape.match(/torch\.Size\(\[([^\]]*)\]\)/);

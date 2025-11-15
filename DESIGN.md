@@ -8,9 +8,9 @@ This document is written and maintained by AI agents. It's meant to help them ge
 
 **Activation**: The extension activates **only when debugging Python** (not other languages), and the panel appears inside the Debug tab, positioned just below the Watch panel, and is automatically opened.
 
-**Target Arrays**: JAX arrays (`jax.Array`, `jaxlib.xla_extension.ArrayImpl`), NumPy arrays (`numpy.ndarray`), and PyTorch tensors (`torch.Tensor`)
+**Target Arrays**: JAX arrays (`jax.Array`, `jaxlib.xla_extension.ArrayImpl`), NumPy arrays (`numpy.ndarray`), PyTorch tensors (`torch.Tensor`), and NumPy scalars (e.g., `numpy.float64`, `numpy.int32`)
 
-**Current Status**: Fully functional with automatic scope scanning and configurable display modes. The panel shows a highlighted array (currently selected), pinned arrays (user-pinned), and all arrays in scope. Arrays automatically update when changing stack frames or when variables go out of scope. Dtypes are formatted cleanly without wrapper syntax. Users can toggle between three display modes: compact one-line, two-line, or expanded (one property per line).
+**Current Status**: Fully functional with automatic scope scanning and configurable display modes. The panel shows a highlighted array (currently selected), pinned arrays (user-pinned), and all arrays in scope. Arrays automatically update when changing stack frames or when variables go out of scope. Dtypes are formatted cleanly without wrapper syntax. Users can toggle between three display modes: compact one-line, two-line, or expanded (one property per line). Scalars (0-dimensional arrays) are automatically detected and display "(scalar)" as their shape.
 
 ## Architecture
 
@@ -531,6 +531,35 @@ The panel shows:
 **Test Coverage**: Added 8 new unit tests in `src/test/edge-cases.test.ts`:
 - Pseudo-variable filtering (3 tests)
 - Array sorting (5 tests)
+
+## NumPy Scalar Support
+
+**Feature**: The extension now supports NumPy scalars (0-dimensional arrays) in addition to regular arrays.
+
+**What are NumPy scalars?**: NumPy scalars are 0-dimensional arrays that result from:
+- Array reduction operations: `np.mean(arr)`, `np.sum(arr)`, `np.max(arr)`, etc.
+- Array indexing: `arr[0, 0]` returns a scalar, not a 1-element array
+- Direct scalar creation: `np.float32(3.14)`, `np.int32(42)`, etc.
+
+**Type Examples**: Common NumPy scalar types include:
+- `numpy.float64`, `numpy.float32`, `numpy.float16`
+- `numpy.int64`, `numpy.int32`, `numpy.int16`, `numpy.int8`
+- `numpy.uint64`, `numpy.uint32`, `numpy.uint16`, `numpy.uint8`
+- `numpy.bool_`
+- `numpy.complex64`, `numpy.complex128`
+
+**Shape Detection**: Scalars have a shape attribute that returns `()` (empty tuple). The extension automatically detects this and displays the shape as `(scalar)` instead of `()` for better clarity.
+
+**Implementation**:
+1. **Supported Types** (`package.json`): Added common NumPy scalar types to the default supported types list
+2. **Shape Formatting** (`src/arrayInspector.ts:490-506`): Modified `formatShape()` to detect `shape === '()'` and return `'(scalar)'`
+3. **Test Coverage** (`src/test/formatting.test.ts`): Added 4 unit tests for scalar shape detection
+4. **Test Example** (`test-examples/numpy_scalar_example.py`): Created a comprehensive example demonstrating various ways to create NumPy scalars
+
+**Usage**: When debugging, click on any NumPy scalar variable (like `mean_value = np.mean(arr)`) to see it in the Array Inspector with:
+- **Shape**: `(scalar)`
+- **Dtype**: The scalar's data type (e.g., `np.float64`)
+- **Device**: Not applicable for NumPy scalars (will be `null`)
 
 ## Testing
 
