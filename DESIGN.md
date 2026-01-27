@@ -156,6 +156,92 @@ await session.customRequest('evaluate', {
 - The debug adapter must support returning type information. Python's `debugpy` should support this with the `supportsVariableType` capability.
 - **The frameId parameter is essential** - without it, the debugger doesn't know which stack frame's scope to evaluate the expression in, causing evaluations to fail silently or return incorrect results.
 
+## Session Lifecycle Management
+
+**Problem**: The extension previously showed error popups when debugging sessions were stopped due to unmanaged event subscriptions and uncaught DAP errors during session termination.
+
+**Solution**: Implemented proper lifecycle management with disposable pattern and defensive DAP operations.
+
+### Key Components
+
+**1. Disposable Pattern** ([src/arrayInspector.ts:30-32](src/arrayInspector.ts#L30-L32)):
+- All event subscriptions are stored in a `subscriptions: vscode.Disposable[]` array
+- Six event listeners are properly registered:
+  - `onDidChangeConfiguration` - Configuration changes
+  - `onDidChangeActiveDebugSession` - Session activation
+  - `onDidTerminateDebugSession` - Session termination
+  - `onDidChangeActiveStackItem` - Stack frame changes
+  - `onDidExpandElement` - Tree view expansion
+  - `onDidCollapseElement` - Tree view collapse
+- `dispose()` method cleans up all subscriptions and resets state
+- Provider is registered in `context.subscriptions` for automatic cleanup
+
+**2. Session State Tracking** ([src/arrayInspector.ts:31-32](src/arrayInspector.ts#L31-L32)):
+- `sessionActive: boolean` - Tracks whether debug session is alive
+- `isTerminating: boolean` - Distinguishes termination cleanup from normal operation
+- Set in session event handlers to maintain accurate state
+
+**3. Session Guards** ([src/arrayInspector.ts:888-892, 1024-1028, 1089-1092](src/arrayInspector.ts#L888-L892)):
+- All DAP operations check `sessionActive` before proceeding
+- `scanScopeForArrays()` - Returns early if session not active
+- `evaluateArray()` - Returns unavailable info if session not active
+- `evaluateAttribute()` - Returns null if session not active
+- Prevents DAP requests to dead sessions
+
+**4. Error Handling During Termination** ([src/arrayInspector.ts:912-923, 926-941](src/arrayInspector.ts#L912-L923)):
+- DAP `customRequest` calls wrapped in try-catch blocks
+- During normal operation: Errors propagate (crash early)
+- During termination: DAP errors caught and logged (expected when session dying)
+- Uses `isTerminating` flag to distinguish modes
+
+**5. Hover Timeout Management** ([src/extension.ts:104-113](src/extension.ts#L104-L113)):
+- Hover timeout cleared on session termination
+- Prevents race condition where timeout fires after session ends
+- Session check added to `detectHoveredVariable()` to skip hover detection when no active session
+
+**6. State Reset on Termination** ([src/arrayInspector.ts:68-88](src/arrayInspector.ts#L68-L88)):
+- Full state reset when session terminates:
+  - `currentHoveredArray` cleared
+  - `pinnedArrays` Map cleared
+  - `localsArrays` and `globalsArrays` cleared
+  - `sectionCollapsedStates` cleared
+  - `lastFrameId` reset to undefined
+  - `displayMode` reset to OneLine
+- Ensures clean state for next debug session
+
+### Error Handling Philosophy
+
+Following crash-early principles while avoiding spurious errors:
+
+**During Normal Operation**:
+- All errors propagate - we want to know if something unexpected happens
+- No suppression of legitimate errors
+- DAP failures indicate real problems
+
+**During Session Termination**:
+- DAP errors are expected (session is dying, requests will naturally fail)
+- Catch and log these specific errors to avoid error popups
+- Still reset state properly regardless of errors
+- Always log caught errors to Output channel for debugging
+
+**Key Distinction**:
+- Use `isTerminating` flag to distinguish cleanup mode from normal operation
+- Never suppress errors inappropriately
+- Clear logging for all error cases
+
+### Testing
+
+Comprehensive lifecycle tests in [src/test/lifecycle.test.ts](src/test/lifecycle.test.ts):
+- `dispose()` clears all subscriptions
+- `dispose()` resets all state
+- `sessionActive` flag prevents DAP operations
+- State fully resets on session termination
+- Session change handler sets `sessionActive` flag
+- `isTerminating` flag distinguishes termination from normal operation
+- Disposable pattern implemented correctly
+
+Run with: `npm run compile && npx mocha out/test/lifecycle.test.js`
+
 ## Recent Fix: Added frameId to DAP Requests
 
 **Problem**: Arrays were not appearing in the panel when clicked during debugging sessions.

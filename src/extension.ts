@@ -22,6 +22,7 @@ export function activate(context: vscode.ExtensionContext): void {
     });
     arrayInspectorProvider.setTreeView(treeView);
 
+    context.subscriptions.push(arrayInspectorProvider);
     context.subscriptions.push(treeView);
 
     // Register commands
@@ -98,6 +99,18 @@ export function activate(context: vscode.ExtensionContext): void {
             }
         })
     );
+
+    // Clear hover timeout when debug session terminates
+    context.subscriptions.push(
+        vscode.debug.onDidTerminateDebugSession(() => {
+            outputChannel.appendLine('Debug session terminated, clearing hover timeout');
+            if (hoverTimeout) {
+                clearTimeout(hoverTimeout);
+                hoverTimeout = undefined;
+            }
+            lastHighlightedWord = undefined;
+        })
+    );
 }
 
 function handleSelectionChange(event: vscode.TextEditorSelectionChangeEvent): void {
@@ -128,6 +141,16 @@ function handleSelectionChange(event: vscode.TextEditorSelectionChangeEvent): vo
 }
 
 function detectHoveredVariable(editor: vscode.TextEditor, position: vscode.Position): void {
+    // Check if session is still active
+    if (!vscode.debug.activeDebugSession) {
+        outputChannel.appendLine('No active debug session, skipping hover detection');
+        if (lastHighlightedWord !== undefined) {
+            arrayInspectorProvider.clearHighlighted();
+            lastHighlightedWord = undefined;
+        }
+        return;
+    }
+
     // Use VSCode's native word detection to find the identifier at the cursor position
     const identifierRange = editor.document.getWordRangeAtPosition(position);
 

@@ -27,6 +27,9 @@ export class ArrayInspectorProvider implements vscode.TreeDataProvider<ArrayInfo
     private sectionCollapsedStates: Map<string, boolean> = new Map();
     private nameCompressionEnabled: boolean = false;
     private maxNameLength: number = 30;
+    private subscriptions: vscode.Disposable[] = [];
+    private sessionActive: boolean = false;
+    private isTerminating: boolean = false;
 
     constructor(private outputChannel: vscode.OutputChannel) {
         const config = vscode.workspace.getConfiguration('arrayInspector');
@@ -39,53 +42,100 @@ export class ArrayInspectorProvider implements vscode.TreeDataProvider<ArrayInfo
         this.outputChannel.appendLine(`Max name length: ${this.maxNameLength}`);
 
         // Listen to configuration changes
-        vscode.workspace.onDidChangeConfiguration((e) => {
-            if (e.affectsConfiguration('arrayInspector')) {
-                this.updateConfiguration();
-                this.refresh();
-            }
-        });
+        this.subscriptions.push(
+            vscode.workspace.onDidChangeConfiguration((e) => {
+                if (e.affectsConfiguration('arrayInspector')) {
+                    this.updateConfiguration();
+                    this.refresh();
+                }
+            })
+        );
 
         // Listen to debug session changes
-        vscode.debug.onDidChangeActiveDebugSession((session) => {
-            this.outputChannel.appendLine(`Debug session changed: ${session?.name || 'none'}`);
-            this.lastFrameId = undefined;
-            this.localsArrays.clear();
-            this.globalsArrays.clear();
-            this.updateAllArrays();
-        });
+        this.subscriptions.push(
+            vscode.debug.onDidChangeActiveDebugSession((session) => {
+                this.outputChannel.appendLine(`Debug session changed: ${session?.name || 'none'}`);
+                this.sessionActive = session !== undefined;
+                this.isTerminating = false;
+                this.lastFrameId = undefined;
+                this.localsArrays.clear();
+                this.globalsArrays.clear();
+                this.updateAllArrays();
+            })
+        );
 
-        vscode.debug.onDidTerminateDebugSession(() => {
-            this.outputChannel.appendLine('Debug session terminated');
-            this.currentHoveredArray = null;
-            this.localsArrays.clear();
-            this.globalsArrays.clear();
-            this.lastFrameId = undefined;
-            this.refresh();
-        });
+        this.subscriptions.push(
+            vscode.debug.onDidTerminateDebugSession(() => {
+                this.outputChannel.appendLine('Debug session terminated');
+                this.isTerminating = true;
+                this.sessionActive = false;
+
+                // Full state reset
+                this.currentHoveredArray = null;
+                this.pinnedArrays.clear();
+                this.localsArrays.clear();
+                this.globalsArrays.clear();
+                this.sectionCollapsedStates.clear();
+                this.lastFrameId = undefined;
+                this.displayMode = DisplayMode.OneLine;
+
+                // Try to update (will gracefully handle DAP errors due to isTerminating flag)
+                this.updateAllArrays().catch(err => {
+                    this.outputChannel.appendLine(`Error during termination cleanup: ${err}`);
+                });
+
+                this.isTerminating = false;
+            })
+        );
 
         // Listen to active stack frame changes
-        vscode.debug.onDidChangeActiveStackItem(() => {
-            this.outputChannel.appendLine('Stack item changed');
-            this.updateAllArrays();
-        });
+        this.subscriptions.push(
+            vscode.debug.onDidChangeActiveStackItem(() => {
+                this.outputChannel.appendLine('Stack item changed');
+                this.updateAllArrays();
+            })
+        );
     }
 
     setTreeView(treeView: vscode.TreeView<ArrayInfoItem>): void {
         this.treeView = treeView;
 
         // Track expansion/collapse events
-        treeView.onDidExpandElement((event) => {
-            if (event.element.isSection && event.element.sectionType) {
-                this.sectionCollapsedStates.set(event.element.sectionType, false);
-            }
-        });
+        this.subscriptions.push(
+            treeView.onDidExpandElement((event) => {
+                if (event.element.isSection && event.element.sectionType) {
+                    this.sectionCollapsedStates.set(event.element.sectionType, false);
+                }
+            })
+        );
 
-        treeView.onDidCollapseElement((event) => {
-            if (event.element.isSection && event.element.sectionType) {
-                this.sectionCollapsedStates.set(event.element.sectionType, true);
-            }
-        });
+        this.subscriptions.push(
+            treeView.onDidCollapseElement((event) => {
+                if (event.element.isSection && event.element.sectionType) {
+                    this.sectionCollapsedStates.set(event.element.sectionType, true);
+                }
+            })
+        );
+    }
+
+    dispose(): void {
+        this.outputChannel.appendLine('Disposing ArrayInspectorProvider');
+
+        // Clear all subscriptions
+        for (const subscription of this.subscriptions) {
+            subscription.dispose();
+        }
+        this.subscriptions = [];
+
+        // Clear all state
+        this.currentHoveredArray = null;
+        this.pinnedArrays.clear();
+        this.localsArrays.clear();
+        this.globalsArrays.clear();
+        this.sectionCollapsedStates.clear();
+        this.lastFrameId = undefined;
+        this.treeView = undefined;
+        this.displayMode = DisplayMode.OneLine;
     }
 
     private updateConfiguration(): void {
@@ -835,6 +885,12 @@ export class ArrayInspectorProvider implements vscode.TreeDataProvider<ArrayInfo
             return;
         }
 
+        // Check if session is active
+        if (!this.sessionActive) {
+            this.outputChannel.appendLine('Session not active, skipping scope scan');
+            return;
+        }
+
         // Check if there's an active stack item (might not be ready yet when debugger first starts)
         if (!vscode.debug.activeStackItem) {
             this.outputChannel.appendLine('No active stack item yet, skipping scope scan');
@@ -853,8 +909,17 @@ export class ArrayInspectorProvider implements vscode.TreeDataProvider<ArrayInfo
         }
 
         // Get all variables in the current frame using the 'scopes' request
-        const scopesResponse = await session.customRequest('scopes', { frameId });
-        this.outputChannel.appendLine(`Scopes response: ${JSON.stringify(scopesResponse)}`);
+        let scopesResponse;
+        try {
+            scopesResponse = await session.customRequest('scopes', { frameId });
+            this.outputChannel.appendLine(`Scopes response: ${JSON.stringify(scopesResponse)}`);
+        } catch (error) {
+            if (this.isTerminating) {
+                this.outputChannel.appendLine(`DAP error during termination (expected): ${error}`);
+                return;
+            }
+            throw error;
+        }
 
         const scopes = scopesResponse.body?.scopes || scopesResponse.scopes;
         if (!scopes) {
@@ -867,9 +932,19 @@ export class ArrayInspectorProvider implements vscode.TreeDataProvider<ArrayInfo
                 continue;
             }
 
-            const varsResponse = await session.customRequest('variables', {
-                variablesReference: scope.variablesReference
-            });
+            let varsResponse;
+            try {
+                varsResponse = await session.customRequest('variables', {
+                    variablesReference: scope.variablesReference
+                });
+            } catch (error) {
+                if (this.isTerminating) {
+                    this.outputChannel.appendLine(`DAP error during termination (expected): ${error}`);
+                    return;
+                }
+                throw error;
+            }
+
             const variables = varsResponse.body?.variables || varsResponse.variables;
             if (!variables) {
                 throw new Error(`Variables response missing variables array for scope ${scope.name}`);
@@ -964,6 +1039,12 @@ export class ArrayInspectorProvider implements vscode.TreeDataProvider<ArrayInfo
             throw new Error('No active debug session');
         }
 
+        // Check if session is active
+        if (!this.sessionActive) {
+            this.outputChannel.appendLine('Session not active, cannot evaluate array');
+            return this.createUnavailableInfo(name, isPinned);
+        }
+
         const frameId = await this.getCurrentFrameId();
 
         this.outputChannel.appendLine(`Evaluating "${expression}" with frameId: ${frameId}`);
@@ -1019,6 +1100,11 @@ export class ArrayInspectorProvider implements vscode.TreeDataProvider<ArrayInfo
         const session = vscode.debug.activeDebugSession;
         if (!session) {
             throw new Error('No active debug session');
+        }
+
+        // Check if session is active
+        if (!this.sessionActive) {
+            return null;
         }
 
         try {
