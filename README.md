@@ -4,7 +4,7 @@ A VSCode extension that shows detailed array information (shape, dtype, device) 
 
 ## Features
 
-- **Automatic Array Detection**: Hover over JAX or NumPy arrays during debugging to see their information in the sidebar
+- **Automatic Array Detection**: Debug sidebar panel fills up with all JAX, NumPy, and PyTorch arrays/tensors among locals and globals
 - **Pin Arrays**: Pin important arrays to keep them visible across stack frames
 - **Real-time Updates**: Array information updates automatically as you step through code
 
@@ -12,7 +12,7 @@ A VSCode extension that shows detailed array information (shape, dtype, device) 
 
 1. Start a Python debugging session
 2. The Array Inspector panel will appear in the activity bar
-3. Hover your cursor over array variables in your code
+3. When you enter a scope, the panel updates with all arrays and tensors in the frame
 4. See detailed information (shape, dtype, device) appear in the panel
 5. Click the pin icon to keep an array visible even when out of scope
 
@@ -67,7 +67,7 @@ npm run watch
 2. Press F5 to launch the Extension Development Host
 3. Open a Python file with JAX/NumPy arrays
 4. Set a breakpoint and start debugging
-5. Hover over array variables to see them in the Array Inspector
+5. Check out the debugging sidebar to see the Array Inspector panel
 
 ## License
 
